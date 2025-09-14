@@ -12,6 +12,14 @@ Route::get('/', function () {
 Route::view('/terms', 'terms')->name('terms.show');
 Route::view('/policy', 'policy')->name('policy.show');
 
+// OTP Verification Routes
+Route::middleware(['auth'])->group(function () {
+    Route::get('/verify-otp', [App\Http\Controllers\OtpVerificationController::class, 'show'])->name('otp.show');
+    Route::post('/verify-otp', [App\Http\Controllers\OtpVerificationController::class, 'verify'])->name('otp.verify');
+    Route::post('/resend-otp', [App\Http\Controllers\OtpVerificationController::class, 'resend'])->name('otp.resend');
+    Route::post('/otp-logout', [App\Http\Controllers\OtpVerificationController::class, 'logout'])->name('otp.logout');
+});
+
 // Custom multi-step registration flow
 Route::get('/register', RegisterFlow::class)->name('register');
 // Keep the previous fallback routes if used elsewhere
@@ -23,6 +31,7 @@ Route::middleware([
     'auth:sanctum',
     config('jetstream.auth_session'),
     'verified',
+    'otp.verified',
 ])->group(function () {
     Route::get('/dashboard', [App\Http\Controllers\DashboardController::class, 'index'])->name('dashboard');
     
@@ -55,6 +64,8 @@ Route::middleware([
         Route::get('/branch', [App\Http\Controllers\AccountsController::class, 'branchAccounts'])->name('branch-accounts');
         Route::get('/real', [App\Http\Controllers\AccountsController::class, 'realAccounts'])->name('real-accounts');
         Route::get('/general-ledger', [App\Http\Controllers\AccountsController::class, 'generalLedger'])->name('general-ledger');
+        Route::get('/balance-sheet', [App\Http\Controllers\BalanceSheetController::class, 'index'])->name('balance-sheet');
+        Route::get('/balance-sheet/export', [App\Http\Controllers\BalanceSheetController::class, 'export'])->name('balance-sheet.export');
         Route::get('/create', [App\Http\Controllers\AccountsController::class, 'create'])->name('create');
         Route::post('/', [App\Http\Controllers\AccountsController::class, 'store'])->name('store');
         Route::get('/{account}', [App\Http\Controllers\AccountsController::class, 'show'])->name('show');
