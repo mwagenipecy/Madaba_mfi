@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Account extends Model
@@ -18,6 +19,8 @@ class Account extends Model
         'parent_account_id',
         'organization_id',
         'branch_id',
+        'real_account_id',
+        'mapping_description',
         'balance',
         'opening_balance',
         'currency',
@@ -66,6 +69,22 @@ class Account extends Model
     public function realAccounts(): HasMany
     {
         return $this->hasMany(RealAccount::class);
+    }
+
+    /**
+     * Backward-compatible singular real account relationship
+     */
+    public function realAccount(): HasOne
+    {
+        return $this->hasOne(RealAccount::class);
+    }
+
+    /**
+     * Get the mapped real account for this account
+     */
+    public function mappedRealAccount(): BelongsTo
+    {
+        return $this->belongsTo(RealAccount::class, 'real_account_id');
     }
 
     /**
@@ -141,6 +160,14 @@ class Account extends Model
     }
 
     /**
+     * Scope to get accounts with mapped real accounts
+     */
+    public function scopeWithMappedAccounts($query)
+    {
+        return $query->whereNotNull('real_account_id');
+    }
+
+    /**
      * Get the status badge color
      */
     public function getStatusBadgeColorAttribute(): string
@@ -192,5 +219,37 @@ class Account extends Model
     public function getIsSubAccountAttribute(): bool
     {
         return !is_null($this->parent_account_id);
+    }
+
+    /**
+     * Check if this account has a mapped real account
+     */
+    public function getHasMappedAccountAttribute(): bool
+    {
+        return !is_null($this->real_account_id);
+    }
+
+    /**
+     * Get the mapping status badge color
+     */
+    public function getMappingStatusBadgeColorAttribute(): string
+    {
+        if ($this->has_mapped_account) {
+            return 'bg-green-100 text-green-800';
+        }
+        
+        return 'bg-gray-100 text-gray-800';
+    }
+
+    /**
+     * Get mapping status text
+     */
+    public function getMappingStatusAttribute(): string
+    {
+        if ($this->has_mapped_account) {
+            return 'Mapped to Real Account';
+        }
+        
+        return 'Not Mapped';
     }
 }

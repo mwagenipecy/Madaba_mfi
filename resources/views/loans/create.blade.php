@@ -47,6 +47,39 @@
                             </div>
                         </div>
                         
+                        <!-- Organization and Branch Information -->
+                        <div class="bg-gray-50 rounded-lg p-6">
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4">Organization & Branch</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Organization</label>
+                                    <div class="w-full px-3 py-2 bg-gray-50 border border-gray-300 rounded-lg text-gray-900">
+                                        {{ $userOrganization->name }}
+                                    </div>
+                                    <p class="mt-1 text-xs text-gray-500">Loan will be created under your organization</p>
+                                </div>
+                                <div>
+                                    <label for="branch_id" class="block text-sm font-medium text-gray-700 mb-1">Branch</label>
+                                    <select name="branch_id" id="branch_id" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500 {{ $errors->has('branch_id') ? 'border-red-500' : '' }}">
+                                        <option value="">Select branch (optional)</option>
+                                        @forelse($branches as $branch)
+                                            <option value="{{ $branch->id }}" {{ old('branch_id') == $branch->id ? 'selected' : '' }}>
+                                                {{ $branch->name }} - {{ $branch->city }}
+                                            </option>
+                                        @empty
+                                            <option value="" disabled>No branches available for your organization</option>
+                                        @endforelse
+                                    </select>
+                                    @error('branch_id')
+                                        <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                                    @enderror
+                                    @if($branches->isEmpty())
+                                        <p class="mt-1 text-xs text-amber-600">No branches are set up for your organization yet</p>
+                                    @endif
+                                </div>
+                            </div>
+                        </div>
+                        
                         <!-- Loan Details -->
                         <div class="bg-gray-50 rounded-lg p-6">
                             <h3 class="text-lg font-semibold text-gray-900 mb-4">Loan Details</h3>
@@ -66,12 +99,12 @@
                                     @enderror
                                 </div>
                                 <div>
-                                    <label for="principal_amount" class="block text-sm font-medium text-gray-700 mb-1">Loan Amount (TZS) *</label>
-                                    <input type="number" name="principal_amount" id="principal_amount" step="0.01" min="0" 
-                                           value="{{ old('principal_amount') }}"
+                                    <label for="loan_amount" class="block text-sm font-medium text-gray-700 mb-1">Loan Amount (TZS) *</label>
+                                    <input type="number" name="loan_amount" id="loan_amount" step="0.01" min="0" 
+                                           value="{{ old('loan_amount') }}"
                                            class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" 
                                            placeholder="0.00" required>
-                                    @error('principal_amount')
+                                    @error('loan_amount')
                                         <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                                     @enderror
                                 </div>
@@ -83,9 +116,9 @@
                                            placeholder="0.00" readonly>
                                 </div>
                                 <div>
-                                    <label for="tenure_months" class="block text-sm font-medium text-gray-700 mb-1">Loan Tenure (Months)</label>
-                                    <input type="number" name="tenure_months" id="tenure_months" min="1" 
-                                           value="{{ old('tenure_months') }}"
+                                    <label for="loan_tenure_months" class="block text-sm font-medium text-gray-700 mb-1">Loan Tenure (Months)</label>
+                                    <input type="number" name="loan_tenure_months" id="loan_tenure_months" min="1" 
+                                           value="{{ old('loan_tenure_months') }}"
                                            class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" 
                                            placeholder="12" readonly>
                                 </div>
@@ -196,15 +229,15 @@
             if (product) {
                 // Auto-populate interest rate and tenure
                 document.getElementById('interest_rate').value = product.interest_rate;
-                document.getElementById('tenure_months').value = product.min_tenure_months;
+                document.getElementById('loan_tenure_months').value = product.min_tenure_months;
                 
                 // Set min/max values for amount
-                document.getElementById('principal_amount').min = product.min_amount;
-                document.getElementById('principal_amount').max = product.max_amount;
+                document.getElementById('loan_amount').min = product.min_amount;
+                document.getElementById('loan_amount').max = product.max_amount;
                 
                 // Set min/max values for tenure
-                document.getElementById('tenure_months').min = product.min_tenure_months;
-                document.getElementById('tenure_months').max = product.max_tenure_months;
+                document.getElementById('loan_tenure_months').min = product.min_tenure_months;
+                document.getElementById('loan_tenure_months').max = product.max_tenure_months;
                 
                 // Auto-populate processing fee if available
                 if (product.processing_fee) {
@@ -213,11 +246,11 @@
             } else {
                 // Clear fields if no product selected
                 document.getElementById('interest_rate').value = '';
-                document.getElementById('tenure_months').value = '';
-                document.getElementById('principal_amount').min = 0;
-                document.getElementById('principal_amount').max = '';
-                document.getElementById('tenure_months').min = 1;
-                document.getElementById('tenure_months').max = '';
+                document.getElementById('loan_tenure_months').value = '';
+                document.getElementById('loan_amount').min = 0;
+                document.getElementById('loan_amount').max = '';
+                document.getElementById('loan_tenure_months').min = 1;
+                document.getElementById('loan_tenure_months').max = '';
             }
         });
         

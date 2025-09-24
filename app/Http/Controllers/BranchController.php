@@ -12,6 +12,8 @@ class BranchController extends Controller
     /**
      * Display a listing of branches
      */
+
+
     public function index()
     {
         return view('branches.index');
@@ -147,4 +149,6 @@ class BranchController extends Controller
     {
         return view('branches.create-user', compact('branch'));
     }
+
+    
 }

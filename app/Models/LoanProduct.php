@@ -174,7 +174,7 @@ class LoanProduct extends Model
      */
     public function getFormattedMinAmountAttribute(): string
     {
-        return '$' . number_format($this->min_amount, 2);
+        return 'TZS ' . number_format($this->min_amount, 2);
     }
 
     /**
@@ -182,7 +182,7 @@ class LoanProduct extends Model
      */
     public function getFormattedMaxAmountAttribute(): string
     {
-        return '$' . number_format($this->max_amount, 2);
+        return 'TZS ' . number_format($this->max_amount, 2);
     }
 
     /**

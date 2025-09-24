@@ -24,7 +24,7 @@
                     </div>
                     <div class="ml-4">
                         <p class="text-sm font-medium text-gray-600">Total Products</p>
-                        <p class="text-2xl font-bold text-gray-900">0</p>
+                        <p class="text-2xl font-bold text-gray-900">{{ $totalProducts }}</p>
                     </div>
                 </div>
             </div>
@@ -38,7 +38,7 @@
                     </div>
                     <div class="ml-4">
                         <p class="text-sm font-medium text-gray-600">Active Products</p>
-                        <p class="text-2xl font-bold text-gray-900">0</p>
+                        <p class="text-2xl font-bold text-gray-900">{{ $activeProducts }}</p>
                     </div>
                 </div>
             </div>
@@ -52,7 +52,7 @@
                     </div>
                     <div class="ml-4">
                         <p class="text-sm font-medium text-gray-600">Featured Products</p>
-                        <p class="text-2xl font-bold text-gray-900">0</p>
+                        <p class="text-2xl font-bold text-gray-900">{{ $featuredProducts }}</p>
                     </div>
                 </div>
             </div>
@@ -66,7 +66,7 @@
                     </div>
                     <div class="ml-4">
                         <p class="text-sm font-medium text-gray-600">Avg Interest Rate</p>
-                        <p class="text-2xl font-bold text-gray-900">0%</p>
+                        <p class="text-2xl font-bold text-gray-900">{{ $avgInterestRate }}%</p>
                     </div>
                 </div>
             </div>
@@ -95,20 +95,50 @@
             </div>
             
             <div class="divide-y divide-gray-200">
-                <!-- Empty State -->
-                <div class="p-12 text-center">
-                    <svg class="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
-                    </svg>
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">No loan products found</h3>
-                    <p class="text-gray-600 mb-6">Get started by creating your first loan product for your organization.</p>
-                    <a href="{{ route('loan-products.create') }}" class="inline-flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors">
-                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                @forelse($loanProducts as $product)
+                    <div class="px-6 py-4 flex items-center justify-between">
+                        <div>
+                            <div class="flex items-center space-x-3">
+                                <h4 class="text-base font-semibold text-gray-900">
+                                    <a href="{{ route('loan-products.show', $product) }}" class="hover:text-green-600 transition-colors">{{ $product->name }}</a>
+                                </h4>
+                                <span class="px-2 py-0.5 text-xs rounded {{ $product->status === 'active' ? 'bg-green-100 text-green-700' : ($product->status === 'suspended' ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700') }}">{{ ucfirst($product->status) }}</span>
+                                @if($product->is_featured)
+                                    <span class="px-2 py-0.5 text-xs rounded bg-purple-100 text-purple-700">Featured</span>
+                                @endif
+                            </div>
+                            <div class="text-sm text-gray-600 mt-1">
+                                Code: <span class="font-mono">{{ $product->code }}</span> • Interest: {{ $product->interest_rate }}% • Tenure: {{ $product->min_tenure_months }}-{{ $product->max_tenure_months }} months
+                            </div>
+                            @if($product->description)
+                                <div class="text-sm text-gray-700 mt-1 line-clamp-2">{{ $product->description }}</div>
+                            @endif
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <a href="{{ route('loan-products.show', $product) }}" class="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 text-white rounded">View</a>
+                            <a href="{{ route('loan-products.edit', $product) }}" class="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded">Edit</a>
+                            <form action="{{ route('loan-products.destroy', $product) }}" method="POST" onsubmit="return confirm('Disable this product?');">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="px-3 py-1.5 text-sm bg-gray-600 hover:bg-gray-700 text-white rounded">Disable</button>
+                            </form>
+                        </div>
+                    </div>
+                @empty
+                    <div class="p-12 text-center">
+                        <svg class="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
                         </svg>
-                        Create Loan Product
-                    </a>
-                </div>
+                        <h3 class="text-lg font-medium text-gray-900 mb-2">No loan products found</h3>
+                        <p class="text-gray-600 mb-6">Get started by creating your first loan product for your organization.</p>
+                        <a href="{{ route('loan-products.create') }}" class="inline-flex items-center px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium transition-colors">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                            </svg>
+                            Create Loan Product
+                        </a>
+                    </div>
+                @endforelse
             </div>
         </div>
     </div>

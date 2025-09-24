@@ -3,6 +3,25 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6 text-gray-900">
+                    @if(session('success'))
+                        <div class="mb-4 p-3 rounded-lg bg-green-50 border border-green-200 text-green-800 text-sm">
+                            {{ session('success') }}
+                        </div>
+                    @endif
+                    @if(session('error'))
+                        <div class="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm">
+                            {{ session('error') }}
+                        </div>
+                    @endif
+                    @if ($errors->any())
+                        <div class="mb-4 p-3 rounded-lg bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
+                            <ul class="list-disc list-inside">
+                                @foreach ($errors->all() as $error)
+                                    <li>{{ $error }}</li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @endif
                     <div class="flex justify-between items-center mb-6">
                         <h1 class="text-2xl font-bold text-gray-900">Loan Disbursements</h1>
                         <div class="flex space-x-2">

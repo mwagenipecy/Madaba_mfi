@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class RealAccount extends Model
 {
@@ -37,6 +38,14 @@ class RealAccount extends Model
     public function account(): BelongsTo
     {
         return $this->belongsTo(Account::class);
+    }
+
+    /**
+     * Get the accounts that are mapped to this real account
+     */
+    public function mappedAccounts(): HasMany
+    {
+        return $this->hasMany(Account::class, 'real_account_id');
     }
 
     /**

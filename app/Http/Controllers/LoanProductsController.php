@@ -16,7 +16,24 @@ class LoanProductsController extends Controller
      */
     public function index()
     {
-        return view('loan-products.index');
+        $organizationId = Auth::user()->organization_id ?? Organization::first()?->id;
+
+        $loanProducts = LoanProduct::where('organization_id', $organizationId)
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $totalProducts = $loanProducts->count();
+        $activeProducts = $loanProducts->where('status', 'active')->count();
+        $featuredProducts = $loanProducts->where('is_featured', true)->count();
+        $avgInterestRate = $totalProducts > 0 ? round($loanProducts->avg('interest_rate'), 2) : 0;
+
+        return view('loan-products.index', compact(
+            'loanProducts',
+            'totalProducts',
+            'activeProducts',
+            'featuredProducts',
+            'avgInterestRate'
+        ));
     }
 
     /**
@@ -24,7 +41,7 @@ class LoanProductsController extends Controller
      */
     public function create()
     {
-        $organizationId = Auth::user()->organization_id;
+        $organizationId = Auth::user()->organization_id ?? Organization::first()?->id;
         
         // Get accounts for the organization
         $accounts = \App\Models\Account::where('organization_id', $organizationId)
@@ -103,8 +120,7 @@ class LoanProductsController extends Controller
             'loan_product_created',
             "Loan product '{$loanProduct->name}' created",
             'info',
-            LoanProduct::class,
-            $loanProduct->id,
+            $loanProduct,
             Auth::id(),
             ['product_code' => $loanProduct->code]
         );
@@ -202,8 +218,7 @@ class LoanProductsController extends Controller
             'loan_product_updated',
             "Loan product '{$loanProduct->name}' updated",
             'info',
-            LoanProduct::class,
-            $loanProduct->id,
+            $loanProduct,
             Auth::id(),
             ['changes' => array_diff_assoc($loanProduct->toArray(), $oldData)]
         );
@@ -232,8 +247,7 @@ class LoanProductsController extends Controller
             'loan_product_deleted',
             "Loan product '{$productName}' disabled",
             'warning',
-            LoanProduct::class,
-            $loanProduct->id,
+            $loanProduct,
             Auth::id(),
             ['product_code' => $productCode]
         );
@@ -247,12 +261,13 @@ class LoanProductsController extends Controller
      */
     public function generateCode()
     {
-        $organizationId = Auth::user()->organization_id;
+        $organizationId = Auth::user()->organization_id ?? Organization::first()?->id;
         $prefix = 'LP';
         $orgCode = str_pad($organizationId, 3, '0', STR_PAD_LEFT);
         $timestamp = now()->format('ymd');
         $random = str_pad(rand(1, 999), 3, '0', STR_PAD_LEFT);
         
-        return $prefix . $orgCode . $timestamp . $random;
+        return response($prefix . $orgCode . $timestamp . $random, 200)
+            ->header('Content-Type', 'text/plain');
     }
 }

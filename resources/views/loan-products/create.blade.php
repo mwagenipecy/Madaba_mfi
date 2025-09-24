@@ -17,6 +17,16 @@
         <div class="bg-white rounded-lg shadow-sm p-6">
             <form action="{{ route('loan-products.store') }}" method="POST" class="space-y-8">
                 @csrf
+                @if ($errors->any())
+                    <div class="p-4 mb-4 rounded-md bg-red-50 border border-red-200">
+                        <div class="text-sm text-red-700 font-medium mb-2">There were some problems with your input:</div>
+                        <ul class="list-disc list-inside text-sm text-red-700">
+                            @foreach ($errors->all() as $error)
+                                <li>{{ $error }}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
                 
                 <!-- Basic Information -->
                 <div class="space-y-6">
@@ -234,7 +244,7 @@
                                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
                                 <option value="">Select disbursement account</option>
                                 @foreach($accounts as $account)
-                                    @if($account->accountType->name === 'Liability')
+                                    @if(Str::lower($account->accountType->name) === 'liability' || Str::lower($account->accountType->category ?? '') === 'liability')
                                         <option value="{{ $account->id }}">{{ $account->name }} ({{ $account->branch ? $account->branch->name : 'Main' }})</option>
                                     @endif
                                 @endforeach
@@ -248,7 +258,7 @@
                                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
                                 <option value="">Select collection account</option>
                                 @foreach($accounts as $account)
-                                    @if($account->accountType->name === 'Assets')
+                                    @if(Str::lower($account->accountType->name) === 'assets' || Str::lower($account->accountType->category ?? '') === 'asset' || Str::lower($account->accountType->name) === 'asset')
                                         <option value="{{ $account->id }}">{{ $account->name }} ({{ $account->branch ? $account->branch->name : 'Main' }})</option>
                                     @endif
                                 @endforeach
@@ -262,7 +272,7 @@
                                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
                                 <option value="">Select interest revenue account</option>
                                 @foreach($accounts as $account)
-                                    @if($account->accountType->name === 'Revenue')
+                                    @if(Str::lower($account->accountType->name) === 'revenue' || Str::lower($account->accountType->category ?? '') === 'revenue')
                                         <option value="{{ $account->id }}">{{ $account->name }} ({{ $account->branch ? $account->branch->name : 'Main' }})</option>
                                     @endif
                                 @endforeach
@@ -276,7 +286,7 @@
                                     class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
                                 <option value="">Select principal account</option>
                                 @foreach($accounts as $account)
-                                    @if($account->accountType->name === 'Assets')
+                                    @if(Str::lower($account->accountType->name) === 'assets' || Str::lower($account->accountType->category ?? '') === 'asset' || Str::lower($account->accountType->name) === 'asset')
                                         <option value="{{ $account->id }}">{{ $account->name }} ({{ $account->branch ? $account->branch->name : 'Main' }})</option>
                                     @endif
                                 @endforeach
@@ -352,7 +362,7 @@
 
         // Generate product code
         function generateCode() {
-            fetch('{{ route("loan-products.generate-code") }}')
+            fetch('{{ route('loan-products.generate-code') }}')
                 .then(response => response.text())
                 .then(code => {
                     document.getElementById('code').value = code;

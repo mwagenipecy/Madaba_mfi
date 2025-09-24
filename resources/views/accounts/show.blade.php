@@ -82,6 +82,70 @@
                         </div>
                     @endif
 
+                    <!-- Real Account Mapping -->
+                    <div class="bg-blue-50 rounded-lg p-6 mb-8">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-semibold text-gray-900">Real Account Mapping</h3>
+                            <a href="{{ route('accounts.map-real', $account) }}" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                                Map Real Account
+                            </a>
+                        </div>
+                        
+                        @if($account->mappedRealAccount)
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <dt class="text-sm font-medium text-gray-600">Mapping Status</dt>
+                                    <dd class="text-sm">
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $account->mapping_status_badge_color }}">
+                                            {{ $account->mapping_status }}
+                                        </span>
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-sm font-medium text-gray-600">Provider</dt>
+                                    <dd class="text-sm text-gray-900">{{ $account->mappedRealAccount->provider_name }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-sm font-medium text-gray-600">External Account</dt>
+                                    <dd class="text-sm text-gray-900 font-mono">{{ $account->mappedRealAccount->external_account_name ?? $account->mappedRealAccount->external_account_id }}</dd>
+                                </div>
+                                <div>
+                                    <dt class="text-sm font-medium text-gray-600">Real Account Balance</dt>
+                                    <dd class="text-sm font-bold {{ $account->mappedRealAccount->last_balance >= 0 ? 'text-green-600' : 'text-red-600' }}">
+                                        TZS {{ number_format($account->mappedRealAccount->last_balance, 2) }}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-sm font-medium text-gray-600">Last Sync</dt>
+                                    <dd class="text-sm text-gray-900">
+                                        {{ $account->mappedRealAccount->last_sync_at ? $account->mappedRealAccount->last_sync_at->format('M d, Y H:i') : 'Never' }}
+                                    </dd>
+                                </div>
+                                <div>
+                                    <dt class="text-sm font-medium text-gray-600">Sync Status</dt>
+                                    <dd class="text-sm">
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $account->mappedRealAccount->sync_status_badge_color }}">
+                                            {{ ucfirst($account->mappedRealAccount->sync_status) }}
+                                        </span>
+                                    </dd>
+                                </div>
+                            </div>
+                            
+                            @if($account->mapping_description)
+                                <div class="mt-4 pt-4 border-t border-blue-200">
+                                    <dt class="text-sm font-medium text-gray-600 mb-2">Mapping Description</dt>
+                                    <dd class="text-sm text-gray-700">{{ $account->mapping_description }}</dd>
+                                </div>
+                            @endif
+                        @else
+                            <div class="text-center py-4">
+                                <div class="text-gray-400 text-4xl mb-2">🏦</div>
+                                <p class="text-gray-600 mb-4">This account is not mapped to any real bank account.</p>
+                                <p class="text-sm text-gray-500">Map this account to a real bank account to track real balances and enable synchronization.</p>
+                            </div>
+                        @endif
+                    </div>
+
                     <!-- Real Account Information -->
                     @if($account->realAccount)
                         <div class="bg-blue-50 rounded-lg p-6 mb-8">
@@ -156,5 +220,6 @@
         </div>
     </div>
 </x-app-shell>
+
 
 

@@ -230,4 +230,55 @@ class SuperAdminController extends Controller
 
         return response()->json($stats);
     }
+
+    /**
+     * View all mapped account balances across organizations
+     */
+    public function mappedAccountBalances()
+    {
+        $mappedAccounts = Account::with([
+                'organization',
+                'branch',
+                'mappedRealAccount',
+                'accountType'
+            ])
+            ->whereNotNull('real_account_id')
+            ->orderBy('organization_id')
+            ->orderBy('branch_id')
+            ->get()
+            ->groupBy('organization.name');
+
+        $totalBalance = $mappedAccounts->flatten()->sum('balance');
+        $totalAccounts = $mappedAccounts->flatten()->count();
+
+        return view('super-admin.mapped-account-balances', compact(
+            'mappedAccounts',
+            'totalBalance',
+            'totalAccounts'
+        ));
+    }
+
+    /**
+     * View specific organization's mapped accounts
+     */
+    public function organizationMappedAccounts(Organization $organization)
+    {
+        $mappedAccounts = Account::with([
+                'branch',
+                'mappedRealAccount',
+                'accountType'
+            ])
+            ->where('organization_id', $organization->id)
+            ->whereNotNull('real_account_id')
+            ->orderBy('branch_id')
+            ->get();
+
+        $totalBalance = $mappedAccounts->sum('balance');
+
+        return view('super-admin.organization-mapped-accounts', compact(
+            'organization',
+            'mappedAccounts',
+            'totalBalance'
+        ));
+    }
 }

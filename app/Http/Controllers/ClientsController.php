@@ -67,10 +67,21 @@ class ClientsController extends Controller
      */
     public function create()
     {
-        $organizations = Organization::active()->get();
-        $branches = Branch::active()->get();
+        // Get user's organization (required)
+        $userOrganizationId = auth()->user()->organization_id;
+        if (!$userOrganizationId) {
+            return redirect()->route('dashboard')->with('error', 'You must be assigned to an organization to create clients.');
+        }
         
-        return view('clients.create', compact('organizations', 'branches'));
+        $userOrganization = Organization::findOrFail($userOrganizationId);
+        
+        // Get branches that belong to user's organization
+        $branches = Branch::where('organization_id', $userOrganizationId)
+                          ->where('status', 'active')
+                          ->orderBy('name')
+                          ->get();
+        
+        return view('clients.create', compact('userOrganization', 'branches'));
     }
 
     /**
@@ -78,63 +89,113 @@ class ClientsController extends Controller
      */
     public function store(Request $request)
     {
+        // Get user's organization
+        $userOrganizationId = auth()->user()->organization_id;
+        if (!$userOrganizationId) {
+            return redirect()->route('dashboard')->with('error', 'You must be assigned to an organization to create clients.');
+        }
+        
         $request->validate([
             'client_type' => 'required|in:individual,group,business',
-            'organization_id' => 'required|exists:organizations,id',
             'branch_id' => 'nullable|exists:branches,id',
             
             // Individual fields
-            'first_name' => 'required_if:client_type,individual|string|max:255',
-            'last_name' => 'required_if:client_type,individual|string|max:255',
+            'first_name' => 'required_if:client_type,individual|string|max:255|min:2',
+            'last_name' => 'required_if:client_type,individual|string|max:255|min:2',
             'middle_name' => 'nullable|string|max:255',
-            'date_of_birth' => 'required_if:client_type,individual|date|before:today',
+            'date_of_birth' => 'required_if:client_type,individual|date|before:today|after:1900-01-01',
             'gender' => 'required_if:client_type,individual|in:male,female,other',
-            'national_id' => 'nullable|string|max:50',
-            'passport_number' => 'nullable|string|max:50',
+            'national_id' => 'nullable|string|max:50|unique:clients,national_id',
+            'passport_number' => 'nullable|string|max:50|unique:clients,passport_number',
             
             // Business/Group fields
-            'business_name' => 'required_if:client_type,business,group|string|max:255',
-            'business_registration_number' => 'nullable|string|max:100',
+            'business_name' => 'required_if:client_type,business,group|string|max:255|min:2',
+            'business_registration_number' => 'nullable|string|max:100|unique:clients,business_registration_number',
             'business_type' => 'required_if:client_type,business,group|in:sole_proprietorship,partnership,corporation,cooperative,ngo,other',
             
             // Contact information
-            'phone_number' => 'required|string|max:20',
-            'secondary_phone' => 'nullable|string|max:20',
-            'email' => 'nullable|email|max:255',
-            'physical_address' => 'required|string',
-            'city' => 'required|string|max:100',
-            'region' => 'required|string|max:100',
+            'phone_number' => 'required|string|max:20|min:10|unique:clients,phone_number',
+            'secondary_phone' => 'nullable|string|max:20|min:10',
+            'email' => 'nullable|email|max:255|unique:clients,email',
+            'physical_address' => 'required|string|min:10|max:500',
+            'city' => 'required|string|max:100|min:2',
+            'region' => 'required|string|max:100|min:2',
             'country' => 'nullable|string|max:100',
             'postal_code' => 'nullable|string|max:20',
             
             // Financial information
-            'monthly_income' => 'nullable|numeric|min:0',
+            'monthly_income' => 'nullable|numeric|min:0|max:999999999.99',
             'income_source' => 'nullable|string|max:255',
             'employer_name' => 'nullable|string|max:255',
-            'employment_address' => 'nullable|string',
+            'employment_address' => 'nullable|string|max:500',
             'bank_name' => 'nullable|string|max:255',
             'bank_account_number' => 'nullable|string|max:100',
             
             // Emergency contact
-            'emergency_contact_name' => 'nullable|string|max:255',
-            'emergency_contact_phone' => 'nullable|string|max:20',
+            'emergency_contact_name' => 'nullable|string|max:255|min:2',
+            'emergency_contact_phone' => 'nullable|string|max:20|min:10',
             'emergency_contact_relationship' => 'nullable|string|max:100',
             
             // Additional information
             'marital_status' => 'nullable|in:single,married,divorced,widowed',
-            'dependents' => 'nullable|integer|min:0',
+            'dependents' => 'nullable|integer|min:0|max:50',
             'occupation' => 'nullable|string|max:255',
-            'business_description' => 'nullable|string',
-            'years_in_business' => 'nullable|integer|min:0',
-            'annual_turnover' => 'nullable|numeric|min:0',
+            'business_description' => 'nullable|string|max:1000',
+            'years_in_business' => 'nullable|integer|min:0|max:100',
+            'annual_turnover' => 'nullable|numeric|min:0|max:9999999999.99',
             
-            'notes' => 'nullable|string',
+            'notes' => 'nullable|string|max:1000',
+        ], [
+            'client_type.required' => 'Please select a client type.',
+            'client_type.in' => 'Invalid client type selected.',
+            'branch_id.exists' => 'Selected branch does not exist or does not belong to your organization.',
+            'first_name.required_if' => 'First name is required for individual clients.',
+            'first_name.min' => 'First name must be at least 2 characters.',
+            'last_name.required_if' => 'Last name is required for individual clients.',
+            'last_name.min' => 'Last name must be at least 2 characters.',
+            'date_of_birth.required_if' => 'Date of birth is required for individual clients.',
+            'date_of_birth.before' => 'Date of birth must be before today.',
+            'date_of_birth.after' => 'Date of birth must be after 1900.',
+            'gender.required_if' => 'Gender is required for individual clients.',
+            'gender.in' => 'Invalid gender selected.',
+            'national_id.unique' => 'This national ID is already registered.',
+            'passport_number.unique' => 'This passport number is already registered.',
+            'business_name.required_if' => 'Business/Group name is required.',
+            'business_name.min' => 'Business/Group name must be at least 2 characters.',
+            'business_registration_number.unique' => 'This registration number is already used.',
+            'business_type.required_if' => 'Business type is required.',
+            'business_type.in' => 'Invalid business type selected.',
+            'phone_number.required' => 'Primary phone number is required.',
+            'phone_number.min' => 'Phone number must be at least 10 digits.',
+            'phone_number.unique' => 'This phone number is already registered.',
+            'secondary_phone.min' => 'Secondary phone number must be at least 10 digits.',
+            'email.unique' => 'This email address is already registered.',
+            'physical_address.required' => 'Physical address is required.',
+            'physical_address.min' => 'Physical address must be at least 10 characters.',
+            'city.required' => 'City is required.',
+            'city.min' => 'City name must be at least 2 characters.',
+            'region.required' => 'Region is required.',
+            'region.min' => 'Region name must be at least 2 characters.',
+            'monthly_income.max' => 'Monthly income cannot exceed 999,999,999.99.',
+            'annual_turnover.max' => 'Annual turnover cannot exceed 9,999,999,999.99.',
+            'dependents.max' => 'Number of dependents cannot exceed 50.',
+            'years_in_business.max' => 'Years in business cannot exceed 100.',
         ]);
+        
+        // Additional validation: ensure branch belongs to user's organization
+        if ($request->branch_id) {
+            $branch = Branch::find($request->branch_id);
+            if (!$branch || $branch->organization_id !== $userOrganizationId) {
+                return redirect()->back()
+                    ->withErrors(['branch_id' => 'Selected branch does not belong to your organization.'])
+                    ->withInput();
+            }
+        }
 
         $client = Client::create([
             'client_number' => Client::generateClientNumber(),
             'client_type' => $request->client_type,
-            'organization_id' => $request->organization_id,
+            'organization_id' => $userOrganizationId,
             'branch_id' => $request->branch_id,
             'first_name' => $request->first_name,
             'middle_name' => $request->middle_name,
@@ -177,8 +238,10 @@ class ClientsController extends Controller
         SystemLog::log(
             'Client created',
             'Client ' . $client->display_name . ' (' . $client->client_number . ') was created',
+            'info',
             $client,
-            'client_created'
+            Auth::id(),
+            ['client_type' => $client->client_type, 'organization_id' => $client->organization_id]
         );
 
         return redirect()->route('clients.show', $client)
@@ -317,8 +380,10 @@ class ClientsController extends Controller
         SystemLog::log(
             'KYC status updated',
             'Client ' . $client->display_name . ' (' . $client->client_number . ') KYC status changed to ' . $request->kyc_status,
+            'info',
             $client,
-            'kyc_status_updated'
+            Auth::id(),
+            ['kyc_status' => $request->kyc_status, 'kyc_notes' => $request->kyc_notes]
         );
 
         return redirect()->route('clients.show', $client)

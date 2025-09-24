@@ -298,9 +298,7 @@ class ExpensesController extends Controller
         $organizationId = $user->organization_id;
         $branchId = $user->branch_id;
 
-        $expense = ExpenseRequest::where('organization_id', $organizationId)
-            ->where('branch_id', $branchId)
-            ->with([
+        $query = ExpenseRequest::with([
                 'expenseAccount.accountType',
                 'paymentAccount.accountType', 
                 'requester',
@@ -308,7 +306,15 @@ class ExpensesController extends Controller
                 'organization',
                 'branch'
             ])
-            ->findOrFail($id);
+            ->where('organization_id', $organizationId);
+
+        // Non-admin users can only see their own branch and own requests
+        if (!in_array($user->role, ['super_admin', 'admin', 'manager'])) {
+            $query->where('branch_id', $branchId)
+                  ->where('requested_by', $user->id);
+        }
+
+        $expense = $query->findOrFail($id);
 
         // Get related approval
         $approval = Approval::where('reference_type', 'ExpenseRequest')

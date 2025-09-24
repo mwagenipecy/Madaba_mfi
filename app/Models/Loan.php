@@ -81,6 +81,8 @@ class Loan extends Model
         'write_off_date',
         'write_off_reason',
         'write_off_by',
+        'documents',
+        'comments',
     ];
 
     protected $casts = [
@@ -114,6 +116,8 @@ class Loan extends Model
         'is_restructured' => 'boolean',
         'is_top_up' => 'boolean',
         'metadata' => 'array',
+        'documents' => 'array',
+        'comments' => 'array',
         'payments_made' => 'integer',
         'total_payments' => 'integer',
         'overdue_days' => 'integer',
@@ -495,13 +499,54 @@ class Loan extends Model
         $this->disbursement_account_id = $disbursementAccountId;
         $this->disbursement_reference = $reference;
         $this->outstanding_balance = $this->approved_amount;
+        if (!$this->first_payment_date) {
+            $this->first_payment_date = now()->addDays(30);
+        }
         $this->save();
+
+        // Ensure a client-specific loan sub-account exists under branch Loan Portfolio
+        $parentLoanPortfolioAccount = Account::where('organization_id', $this->organization_id)
+            ->where('branch_id', $this->branch_id)
+            ->where('name', 'like', '%Loan Portfolio%')
+            ->first();
+
+        if ($parentLoanPortfolioAccount) {
+            // Try to find an existing sub-account for this loan by metadata
+            $existingClientLoanAccount = Account::where('organization_id', $this->organization_id)
+                ->where('branch_id', $this->branch_id)
+                ->where('parent_account_id', $parentLoanPortfolioAccount->id)
+                ->where('name', 'like', '%' . $this->loan_number . '%')
+                ->first();
+
+            if (!$existingClientLoanAccount) {
+                Account::create([
+                    'name' => ($this->client->display_name ?? 'Client') . ' - ' . $this->loan_number . ' Loan',
+                    'account_number' => 'LN-' . str_pad((string)$this->id, 8, '0', STR_PAD_LEFT),
+                    'account_type_id' => $parentLoanPortfolioAccount->account_type_id,
+                    'parent_account_id' => $parentLoanPortfolioAccount->id,
+                    'organization_id' => $this->organization_id,
+                    'branch_id' => $this->branch_id,
+                    'balance' => $this->approved_amount,
+                    'opening_balance' => $this->approved_amount,
+                    'currency' => 'TZS',
+                    'description' => 'Loan receivable account for ' . ($this->client->display_name ?? 'Client') . ' (' . $this->loan_number . ')',
+                    'status' => 'active',
+                    'opening_date' => now(),
+                    'last_transaction_date' => now(),
+                    'metadata' => [
+                        'client_id' => $this->client_id,
+                        'loan_id' => $this->id,
+                    ],
+                ]);
+            }
+        }
 
         // Record disbursement transaction
         $this->transactions()->create([
             'transaction_number' => LoanTransaction::generateTransactionNumber(),
             'transaction_type' => 'disbursement',
-            'amount' => $this->approved_amount,
+            // Record as negative to reflect funds going out to client account
+            'amount' => -1 * $this->approved_amount,
             'principal_amount' => $this->approved_amount,
             'transaction_date' => now(),
             'processed_by' => auth()->id(),
@@ -509,6 +554,9 @@ class Loan extends Model
             'branch_id' => $this->branch_id,
             'status' => 'completed',
         ]);
+
+        // Generate repayment schedule now that loan is disbursed
+        $this->calculateLoanSchedule();
 
         // Record in General Ledger
         $this->recordGeneralLedgerEntry('disbursement', $this->approved_amount, $disbursementAccountId);

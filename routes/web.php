@@ -86,25 +86,34 @@ Route::middleware([
         Route::get('/balance-sheet/export', [App\Http\Controllers\BalanceSheetController::class, 'export'])->name('balance-sheet.export');
         Route::get('/create', [App\Http\Controllers\AccountsController::class, 'create'])->name('create');
         Route::post('/', [App\Http\Controllers\AccountsController::class, 'store'])->name('store');
+        
+        // Real Account Mapping - Must be before {account} routes
+        Route::get('/mapped', [App\Http\Controllers\AccountsController::class, 'mappedAccounts'])->name('mapped');
+        
         Route::get('/{account}', [App\Http\Controllers\AccountsController::class, 'show'])->name('show');
         Route::get('/{account}/edit', [App\Http\Controllers\AccountsController::class, 'edit'])->name('edit');
         Route::put('/{account}', [App\Http\Controllers\AccountsController::class, 'update'])->name('update');
         Route::delete('/{account}', [App\Http\Controllers\AccountsController::class, 'disable'])->name('disable');
         Route::get('/{account}/real/create', [App\Http\Controllers\AccountsController::class, 'createRealAccount'])->name('real.create');
         Route::post('/{account}/real', [App\Http\Controllers\AccountsController::class, 'storeRealAccount'])->name('real.store');
+        Route::get('/{account}/map-real', [App\Http\Controllers\AccountsController::class, 'mapRealAccount'])->name('map-real');
+        Route::post('/{account}/map-real', [App\Http\Controllers\AccountsController::class, 'storeRealAccountMapping'])->name('store-real-mapping');
         Route::post('/real/{realAccount}/sync', [App\Http\Controllers\AccountsController::class, 'syncBalance'])->name('real.sync');
     });
+
+    
 
     // Loan Products Management
     Route::prefix('loan-products')->name('loan-products.')->group(function () {
         Route::get('/', [App\Http\Controllers\LoanProductsController::class, 'index'])->name('index');
         Route::get('/create', [App\Http\Controllers\LoanProductsController::class, 'create'])->name('create');
         Route::post('/', [App\Http\Controllers\LoanProductsController::class, 'store'])->name('store');
+        // Place generate-code BEFORE the catch-all {loanProduct} routes to avoid collision
+        Route::get('/generate-code', [App\Http\Controllers\LoanProductsController::class, 'generateCode'])->name('generate-code');
         Route::get('/{loanProduct}', [App\Http\Controllers\LoanProductsController::class, 'show'])->name('show');
         Route::get('/{loanProduct}/edit', [App\Http\Controllers\LoanProductsController::class, 'edit'])->name('edit');
         Route::put('/{loanProduct}', [App\Http\Controllers\LoanProductsController::class, 'update'])->name('update');
         Route::delete('/{loanProduct}', [App\Http\Controllers\LoanProductsController::class, 'destroy'])->name('destroy');
-        Route::get('/generate-code', [App\Http\Controllers\LoanProductsController::class, 'generateCode'])->name('generate-code');
     });
 
     // Client Management
@@ -138,12 +147,17 @@ Route::middleware([
         Route::get('/{loan}/edit', [App\Http\Controllers\LoansController::class, 'edit'])->name('edit');
         Route::put('/{loan}', [App\Http\Controllers\LoansController::class, 'update'])->name('update');
         Route::delete('/{loan}', [App\Http\Controllers\LoansController::class, 'destroy'])->name('destroy');
+        Route::post('/{loan}/upload-document', [App\Http\Controllers\LoansController::class, 'uploadDocument'])->name('upload-document');
+        Route::post('/{loan}/add-comment', [App\Http\Controllers\LoansController::class, 'addComment'])->name('add-comment');
+        Route::get('/{loan}/download-document/{documentId}', [App\Http\Controllers\LoansController::class, 'downloadDocument'])->name('download-document');
+        Route::delete('/{loan}/delete-document/{documentId}', [App\Http\Controllers\LoansController::class, 'deleteDocument'])->name('delete-document');
         Route::post('/{loan}/approve', [App\Http\Controllers\LoansController::class, 'approve'])->name('approve');
         Route::post('/{loan}/reject', [App\Http\Controllers\LoansController::class, 'reject'])->name('reject');
+        Route::post('/{loan}/return-to-officer', [App\Http\Controllers\LoansController::class, 'returnToOfficer'])->name('return-to-officer');
+        Route::post('/{loan}/under-review', [App\Http\Controllers\LoansController::class, 'putUnderReview'])->name('under-review');
         Route::post('/{loan}/disburse', [App\Http\Controllers\LoansController::class, 'disburse'])->name('disburse');
         Route::post('/{loan}/repayment', [App\Http\Controllers\LoansController::class, 'processRepayment'])->name('repayment');
         Route::post('/{loan}/close', [App\Http\Controllers\LoansController::class, 'closeLoan'])->name('close');
-        Route::post('/{loan}/return-to-officer', [App\Http\Controllers\LoansController::class, 'returnToOfficer'])->name('return-to-officer');
         Route::post('/{loan}/write-off', [App\Http\Controllers\LoansController::class, 'writeOffLoan'])->name('write-off');
         Route::post('/{loan}/restructure', [App\Http\Controllers\LoansController::class, 'restructureLoan'])->name('restructure');
         Route::post('/{loan}/top-up', [App\Http\Controllers\LoansController::class, 'topUpLoan'])->name('top-up');
@@ -236,6 +250,10 @@ Route::prefix('super-admin')->name('super-admin.')->group(function () {
     Route::patch('/organizations/{organization}/deactivate', [App\Http\Controllers\SuperAdminController::class, 'deactivate'])->name('organizations.deactivate');
     Route::patch('/organizations/{organization}/reactivate', [App\Http\Controllers\SuperAdminController::class, 'reactivate'])->name('organizations.reactivate');
     Route::get('/organizations/{organization}/statistics', [App\Http\Controllers\SuperAdminController::class, 'statistics'])->name('organizations.statistics');
+    
+    // Mapped Account Balance Views
+    Route::get('/mapped-account-balances', [App\Http\Controllers\SuperAdminController::class, 'mappedAccountBalances'])->name('mapped-account-balances');
+    Route::get('/organizations/{organization}/mapped-accounts', [App\Http\Controllers\SuperAdminController::class, 'organizationMappedAccounts'])->name('organizations.mapped-accounts');
 });
 
 /// organization onboarding and registering 
@@ -246,4 +264,6 @@ Route::prefix('organization')->name('organization.')->group(function () {
     Route::get('/register', [App\Http\Controllers\OrganizationSettingController::class, 'showRegistrationForm'])->name('register');
     Route::post('/register', [App\Http\Controllers\OrganizationSettingController::class, 'processRegistration'])->name('register.process');
 });
+
+
 

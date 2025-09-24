@@ -361,4 +361,62 @@ class AccountsController extends Controller
 
         return view('accounts.general-ledger', compact('entries', 'accounts', 'totalDebits', 'totalCredits', 'netBalance'));
     }
+
+    /**
+     * Show form to map account to real account
+     */
+    public function mapRealAccount(Account $account)
+    {
+        $organizationId = auth()->user()->organization_id ?? $account->organization_id;
+        
+        // Get available real accounts for this organization
+        $realAccounts = RealAccount::whereHas('account', function($query) use ($organizationId) {
+            $query->where('organization_id', $organizationId);
+        })->active()->get();
+
+        return view('accounts.map-real-account', compact('account', 'realAccounts'));
+    }
+
+    /**
+     * Store account to real account mapping
+     */
+    public function storeRealAccountMapping(Request $request, Account $account)
+    {
+        $validated = $request->validate([
+            'real_account_id' => 'nullable|exists:real_accounts,id',
+            'mapping_description' => 'nullable|string|max:500',
+        ]);
+
+        $account->update($validated);
+
+        // Log the action
+        SystemLog::log(
+            'account_real_mapping',
+            "Real account mapping updated for {$account->name} ({$account->account_number})",
+            'info',
+            $account,
+            auth()->id()
+        );
+
+        return redirect()->route('accounts.show', $account)
+            ->with('success', 'Account mapping updated successfully.');
+    }
+
+    /**
+     * Show mapped accounts for current organization
+     */
+    public function mappedAccounts()
+    {
+        $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
+        
+        $mappedAccounts = Account::with(['branch', 'mappedRealAccount', 'accountType'])
+            ->where('organization_id', $organizationId)
+            ->whereNotNull('real_account_id')
+            ->orderBy('branch_id')
+            ->get();
+
+        $totalBalance = $mappedAccounts->sum('balance');
+
+        return view('accounts.mapped-accounts', compact('mappedAccounts', 'totalBalance'));
+    }
 }

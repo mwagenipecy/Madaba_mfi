@@ -10,6 +10,7 @@ use App\Models\Branch;
 use App\Models\User;
 use App\Models\Organization;
 use App\Models\Account;
+use App\Models\SystemLog;
 use Illuminate\Http\Request;
 
 class LoansController extends Controller
@@ -70,33 +71,39 @@ class LoansController extends Controller
      */
     public function create()
     {
-        $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
+        // Get user's organization (required)
+        $userOrganizationId = auth()->user()->organization_id;
+        if (!$userOrganizationId) {
+            return redirect()->route('dashboard')->with('error', 'You must be assigned to an organization to create loans.');
+        }
+        
+        $userOrganization = Organization::findOrFail($userOrganizationId);
         
         // Get clients for the organization
-        $clients = Client::where('organization_id', $organizationId)
+        $clients = Client::where('organization_id', $userOrganizationId)
             ->where('status', 'active')
             ->orderBy('first_name')
             ->get();
         
         // Get loan products
-        $loanProducts = LoanProduct::where('organization_id', $organizationId)
+        $loanProducts = LoanProduct::where('organization_id', $userOrganizationId)
             ->where('status', 'active')
             ->orderBy('name')
             ->get();
         
-        // Get branches
-        $branches = Branch::where('organization_id', $organizationId)
+        // Get branches that belong to user's organization
+        $branches = Branch::where('organization_id', $userOrganizationId)
             ->where('status', 'active')
             ->orderBy('name')
             ->get();
         
         // Get loan officers (users with loan officer role)
-        $loanOfficers = User::where('organization_id', $organizationId)
+        $loanOfficers = User::where('organization_id', $userOrganizationId)
             ->where('role', 'loan_officer')
             ->orderBy('first_name')
             ->get();
 
-        return view('loans.create', compact('clients', 'loanProducts', 'branches', 'loanOfficers'));
+        return view('loans.create', compact('clients', 'loanProducts', 'branches', 'loanOfficers', 'userOrganization'));
     }
 
     /**
@@ -104,8 +111,385 @@ class LoansController extends Controller
      */
     public function store(Request $request)
     {
-        // Implementation will be added later
-        return redirect()->route('loans.index')->with('success', 'Loan application created successfully.');
+        // Get user's organization
+        $userOrganizationId = auth()->user()->organization_id;
+        if (!$userOrganizationId) {
+            return redirect()->route('dashboard')->with('error', 'You must be assigned to an organization to create loans.');
+        }
+
+        $request->validate([
+            'client_id' => 'required|exists:clients,id',
+            'loan_product_id' => 'required|exists:loan_products,id',
+            'loan_amount' => 'required|numeric|min:0.01',
+            'interest_rate' => 'nullable|numeric|min:0|max:100',
+            'loan_tenure_months' => 'nullable|integer|min:1|max:360',
+            'interest_calculation_method' => 'nullable|in:flat,reducing',
+            'repayment_frequency' => 'nullable|in:daily,weekly,monthly,quarterly',
+            'branch_id' => 'nullable|exists:branches,id',
+            'loan_officer_id' => 'nullable|exists:users,id',
+            'purpose' => 'nullable|string|max:500',
+            'collateral_description' => 'nullable|string|max:1000',
+            'notes' => 'nullable|string|max:1000',
+        ], [
+            'client_id.required' => 'Please select a client.',
+            'client_id.exists' => 'Selected client does not exist.',
+            'loan_product_id.required' => 'Please select a loan product.',
+            'loan_product_id.exists' => 'Selected loan product does not exist.',
+            'loan_amount.required' => 'Loan amount is required.',
+            'loan_amount.numeric' => 'Loan amount must be a valid number.',
+            'loan_amount.min' => 'Loan amount must be greater than 0.',
+            'interest_calculation_method.in' => 'Interest calculation method must be either flat or reducing.',
+            'repayment_frequency.in' => 'Repayment frequency must be daily, weekly, monthly, or quarterly.',
+            'branch_id.exists' => 'Selected branch does not exist or does not belong to your organization.',
+            'loan_officer_id.exists' => 'Selected loan officer does not exist.',
+        ]);
+
+        // Verify client belongs to user's organization
+        $client = Client::where('id', $request->client_id)
+                       ->where('organization_id', $userOrganizationId)
+                       ->first();
+
+        if (!$client) {
+            return redirect()->back()
+                ->withErrors(['client_id' => 'Selected client does not belong to your organization.'])
+                ->withInput();
+        }
+
+        // Verify loan product belongs to user's organization
+        $loanProduct = LoanProduct::where('id', $request->loan_product_id)
+                                 ->where('organization_id', $userOrganizationId)
+                                 ->first();
+
+        if (!$loanProduct) {
+            return redirect()->back()
+                ->withErrors(['loan_product_id' => 'Selected loan product does not belong to your organization.'])
+                ->withInput();
+        }
+
+        // Verify branch belongs to user's organization if provided
+        if ($request->branch_id) {
+            $branch = Branch::where('id', $request->branch_id)
+                           ->where('organization_id', $userOrganizationId)
+                           ->first();
+
+            if (!$branch) {
+                return redirect()->back()
+                    ->withErrors(['branch_id' => 'Selected branch does not belong to your organization.'])
+                    ->withInput();
+            }
+        }
+
+        // Create the loan
+        $loan = Loan::create([
+            'loan_number' => Loan::generateLoanNumber(),
+            'client_id' => $request->client_id,
+            'loan_product_id' => $request->loan_product_id,
+            'organization_id' => $userOrganizationId,
+            'branch_id' => $request->branch_id,
+            'loan_officer_id' => $request->loan_officer_id ?? auth()->id(),
+            'loan_amount' => $request->loan_amount,
+            'interest_rate' => $request->interest_rate ?? $loanProduct->interest_rate,
+            'loan_tenure_months' => $request->loan_tenure_months ?? $loanProduct->min_tenure_months,
+            'interest_calculation_method' => $request->interest_calculation_method ?? 'flat',
+            'repayment_frequency' => $request->repayment_frequency ?? 'monthly',
+            'application_date' => now()->toDateString(),
+            'purpose' => $request->purpose,
+            'collateral_description' => $request->collateral_description,
+            'status' => 'pending',
+            'approval_status' => 'pending',
+            'notes' => $request->notes,
+        ]);
+
+        return redirect()->route('loans.show', $loan)
+            ->with('success', 'Loan application created successfully.');
+    }
+
+    /**
+     * Upload document for a loan
+     */
+    public function uploadDocument(Request $request, Loan $loan)
+    {
+        $request->validate([
+            'document' => 'required|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:10240', // 10MB max
+            'document_type' => 'required|string|max:255',
+            'description' => 'nullable|string|max:1000',
+        ]);
+
+        if ($request->hasFile('document')) {
+            $file = $request->file('document');
+            $filename = time() . '_' . $file->getClientOriginalName();
+            $path = $file->storeAs('loan_documents', $filename, 'public');
+
+            // Get existing documents or create empty array
+            $documents = $loan->documents ?? [];
+            
+            // Add new document
+            $documents[] = [
+                'id' => uniqid(),
+                'name' => $file->getClientOriginalName(),
+                'type' => $request->document_type,
+                'description' => $request->description,
+                'filename' => $filename,
+                'path' => $path,
+                'size' => $file->getSize(),
+                'uploaded_by' => auth()->id(),
+                'uploaded_at' => now()->toISOString(),
+                'status' => 'pending'
+            ];
+
+            $loan->update(['documents' => $documents]);
+
+            SystemLog::log(
+                'Document uploaded',
+                'Document "' . $file->getClientOriginalName() . '" uploaded for loan ' . $loan->loan_number,
+                'info',
+                $loan,
+                auth()->id(),
+                ['document_type' => $request->document_type, 'filename' => $filename]
+            );
+
+            return redirect()->route('loans.show', $loan)
+                ->with('success', 'Document uploaded successfully.');
+        }
+
+        return redirect()->back()->with('error', 'Failed to upload document.');
+    }
+
+    /**
+     * Add comment to a loan
+     */
+    public function addComment(Request $request, Loan $loan)
+    {
+        $request->validate([
+            'comment' => 'required|string|max:2000',
+            'comment_type' => 'nullable|in:general,internal,client_communication',
+        ]);
+
+        // Get existing comments or create empty array
+        $comments = $loan->comments ?? [];
+        
+        // Add new comment
+        $comments[] = [
+            'id' => uniqid(),
+            'user_id' => auth()->id(),
+            'user_name' => auth()->user()->first_name . ' ' . auth()->user()->last_name,
+            'user_role' => auth()->user()->role,
+            'comment' => $request->comment,
+            'comment_type' => $request->comment_type ?? 'general',
+            'created_at' => now()->toISOString(),
+        ];
+
+        $loan->update(['comments' => $comments]);
+
+        SystemLog::log(
+            'Comment added',
+            'Comment added to loan ' . $loan->loan_number,
+            'info',
+            $loan,
+            auth()->id(),
+            ['comment_type' => $request->comment_type ?? 'general']
+        );
+
+        return redirect()->route('loans.show', $loan)
+            ->with('success', 'Comment added successfully.');
+    }
+
+    /**
+     * Download a loan document
+     */
+    public function downloadDocument(Loan $loan, $documentId)
+    {
+        $documents = $loan->documents ?? [];
+        
+        foreach ($documents as $document) {
+            if ($document['id'] === $documentId) {
+                $filePath = storage_path('app/public/' . $document['path']);
+                
+                if (file_exists($filePath)) {
+                    return response()->download($filePath, $document['name']);
+                }
+                break;
+            }
+        }
+
+        return redirect()->back()->with('error', 'Document not found.');
+    }
+
+    /**
+     * Delete a loan document
+     */
+    public function deleteDocument(Loan $loan, $documentId)
+    {
+        $documents = $loan->documents ?? [];
+        $updatedDocuments = [];
+        $deletedDocument = null;
+
+        foreach ($documents as $document) {
+            if ($document['id'] !== $documentId) {
+                $updatedDocuments[] = $document;
+            } else {
+                $deletedDocument = $document;
+                // Delete the actual file
+                $filePath = storage_path('app/public/' . $document['path']);
+                if (file_exists($filePath)) {
+                    unlink($filePath);
+                }
+            }
+        }
+
+        $loan->update(['documents' => $updatedDocuments]);
+
+        if ($deletedDocument) {
+            SystemLog::log(
+                'Document deleted',
+                'Document "' . $deletedDocument['name'] . '" deleted from loan ' . $loan->loan_number,
+                'warning',
+                $loan,
+                auth()->id(),
+                ['document_type' => $deletedDocument['type']]
+            );
+
+            return redirect()->route('loans.show', $loan)
+                ->with('success', 'Document deleted successfully.');
+        }
+
+        return redirect()->back()->with('error', 'Document not found.');
+    }
+
+    /**
+     * Approve a loan
+     */
+    public function approve(Request $request, Loan $loan)
+    {
+        $request->validate([
+            'approval_notes' => 'nullable|string|max:1000',
+            'approved_amount' => 'nullable|numeric|min:0',
+        ]);
+
+        // Check if user has permission to approve loans
+        if (!in_array(auth()->user()->role, ['admin', 'manager', 'super_admin'])) {
+            return redirect()->back()->with('error', 'You do not have permission to approve loans.');
+        }
+
+        // Update loan status
+        $loan->update([
+            'status' => 'approved',
+            'approval_status' => 'approved',
+            'approval_date' => now()->toDateString(),
+            'approved_by' => auth()->id(),
+            'approval_notes' => $request->approval_notes,
+            'approved_amount' => $request->approved_amount ?? $loan->loan_amount,
+        ]);
+
+        SystemLog::log(
+            'Loan approved',
+            'Loan ' . $loan->loan_number . ' has been approved',
+            'info',
+            $loan,
+            auth()->id(),
+            ['approved_amount' => $request->approved_amount ?? $loan->loan_amount, 'approval_notes' => $request->approval_notes]
+        );
+
+        return redirect()->route('loans.show', $loan)
+            ->with('success', 'Loan has been approved successfully.');
+    }
+
+    /**
+     * Reject a loan
+     */
+    public function reject(Request $request, Loan $loan)
+    {
+        $request->validate([
+            'rejection_reason' => 'required|string|max:1000',
+        ]);
+
+        // Check if user has permission to reject loans
+        if (!in_array(auth()->user()->role, ['admin', 'manager', 'super_admin'])) {
+            return redirect()->back()->with('error', 'You do not have permission to reject loans.');
+        }
+
+        // Update loan status
+        $loan->update([
+            'status' => 'rejected',
+            'approval_status' => 'rejected',
+            'rejected_by' => auth()->id(),
+            'rejection_reason' => $request->rejection_reason,
+        ]);
+
+        SystemLog::log(
+            'Loan rejected',
+            'Loan ' . $loan->loan_number . ' has been rejected',
+            'warning',
+            $loan,
+            auth()->id(),
+            ['rejection_reason' => $request->rejection_reason]
+        );
+
+        return redirect()->route('loans.show', $loan)
+            ->with('success', 'Loan has been rejected.');
+    }
+
+    /**
+     * Return loan to loan officer for review
+     */
+    public function returnToOfficer(Request $request, Loan $loan)
+    {
+        $request->validate([
+            'return_notes' => 'nullable|string|max:1000',
+        ]);
+
+        // Check if user has permission to return loans
+        if (!in_array(auth()->user()->role, ['admin', 'manager', 'super_admin'])) {
+            return redirect()->back()->with('error', 'You do not have permission to return loans to officers.');
+        }
+
+        // Update loan status
+        $loan->update([
+            'status' => 'pending',
+            'approval_status' => 'pending',
+            'returned_by' => auth()->id(),
+            'returned_at' => now(),
+            'notes' => $loan->notes . "\n\nReturned to loan officer: " . ($request->return_notes ?? 'Additional review required'),
+        ]);
+
+        SystemLog::log(
+            'Loan returned to officer',
+            'Loan ' . $loan->loan_number . ' has been returned to loan officer for review',
+            'info',
+            $loan,
+            auth()->id(),
+            ['return_notes' => $request->return_notes]
+        );
+
+        return redirect()->route('loans.show', $loan)
+            ->with('success', 'Loan has been returned to the loan officer.');
+    }
+
+    /**
+     * Put loan under review
+     */
+    public function putUnderReview(Loan $loan)
+    {
+        // Check if user has permission to review loans
+        if (!in_array(auth()->user()->role, ['admin', 'manager', 'super_admin', 'loan_officer'])) {
+            return redirect()->back()->with('error', 'You do not have permission to review loans.');
+        }
+
+        // Update loan status
+        $loan->update([
+            'status' => 'under_review',
+        ]);
+
+        SystemLog::log(
+            'Loan under review',
+            'Loan ' . $loan->loan_number . ' is now under review',
+            'info',
+            $loan,
+            auth()->id()
+        );
+
+        return redirect()->route('loans.show', $loan)
+            ->with('success', 'Loan is now under review.');
     }
 
     /**
@@ -206,23 +590,7 @@ class LoansController extends Controller
         return view('loans.approvals', compact('pendingLoans', 'recentApprovals'));
     }
 
-    /**
-     * Approve a loan
-     */
-    public function approve(Request $request, Loan $loan)
-    {
-        // Implementation will be added later
-        return redirect()->back()->with('success', 'Loan approved successfully.');
-    }
-
-    /**
-     * Reject a loan
-     */
-    public function reject(Request $request, Loan $loan)
-    {
-        // Implementation will be added later
-        return redirect()->back()->with('success', 'Loan rejected.');
-    }
+    
 
     /**
      * Display loan disbursements
@@ -281,7 +649,27 @@ class LoansController extends Controller
                 ->first();
 
             if (!$disbursementAccount) {
-                return redirect()->back()->with('error', 'No disbursement account found for this branch.');
+                // Create a demo disbursement account for this branch (Liability type)
+                $liabilityType = \App\Models\AccountType::where('name', 'Liability')->first();
+                if (!$liabilityType) {
+                    return redirect()->back()->with('error', 'Liability account type not configured.');
+                }
+
+                $branchName = $loan->branch?->name ?? 'Branch';
+                $disbursementAccount = \App\Models\Account::create([
+                    'name' => $branchName . ' Disbursement Account (Demo)',
+                    'account_number' => 'DISB-' . str_pad((string)$loan->branch_id, 4, '0', STR_PAD_LEFT) . '-' . rand(100,999),
+                    'account_type_id' => $liabilityType->id,
+                    'organization_id' => $loan->organization_id,
+                    'branch_id' => $loan->branch_id,
+                    'balance' => 0,
+                    'opening_balance' => 0,
+                    'currency' => 'TZS',
+                    'description' => 'Auto-created demo disbursement account for loan disbursement.',
+                    'status' => 'active',
+                    'opening_date' => now(),
+                    'last_transaction_date' => now(),
+                ]);
             }
 
             // Disburse the loan
@@ -297,29 +685,7 @@ class LoansController extends Controller
         }
     }
 
-    /**
-     * Return loan to loan officer
-     */
-    public function returnToOfficer(Request $request, Loan $loan)
-    {
-        $request->validate([
-            'reason' => 'required|string|max:500',
-        ]);
-
-        try {
-            $loan->update([
-                'status' => 'pending',
-                'approval_status' => 'pending',
-                'rejection_reason' => $request->reason,
-                'returned_at' => now(),
-                'returned_by' => auth()->id(),
-            ]);
-
-            return redirect()->back()->with('success', 'Loan has been returned to the loan officer.');
-        } catch (\Exception $e) {
-            return redirect()->back()->with('error', 'An error occurred while returning the loan: ' . $e->getMessage());
-        }
-    }
+    
 
     /**
      * Display loan repayments
