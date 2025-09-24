@@ -59,13 +59,6 @@
                                     </dd>
                                 </div>
                                 
-                                <div class="sm:col-span-2">
-                                    <dt class="text-sm font-medium text-gray-500">Description</dt>
-                                    <dd class="mt-1 text-sm text-gray-900">
-                                        {{ $loanTransaction->description }}
-                                    </dd>
-                                </div>
-                                
                                 @if($loanTransaction->notes)
                                     <div class="sm:col-span-2">
                                         <dt class="text-sm font-medium text-gray-500">Notes</dt>
@@ -94,11 +87,11 @@
                                         </div>
                                     @endif
                                     
-                                    @if($loanTransaction->payment_reference)
+                                    @if($loanTransaction->reference_number)
                                         <div>
                                             <dt class="text-sm font-medium text-gray-500">Payment Reference</dt>
                                             <dd class="mt-1 text-sm text-gray-900">
-                                                {{ $loanTransaction->payment_reference }}
+                                                {{ $loanTransaction->reference_number }}
                                             </dd>
                                         </div>
                                     @endif

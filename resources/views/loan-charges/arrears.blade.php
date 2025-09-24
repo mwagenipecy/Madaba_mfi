@@ -57,7 +57,7 @@
                                 <tbody class="bg-white divide-y divide-gray-200">
                                     @foreach($loans as $loan)
                                         @php
-                                            $outstandingCharges = $loan->loanTransactions->whereIn('transaction_type', ['penalty', 'late_fee'])->where('status', 'pending');
+                                            $outstandingCharges = $loan->transactions->whereIn('transaction_type', ['penalty_fee', 'late_fee'])->where('status', 'pending');
                                             $totalOutstanding = $outstandingCharges->sum('amount');
                                             $daysOverdue = $loan->overdue_days ?? 0;
                                         @endphp

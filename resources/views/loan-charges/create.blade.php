@@ -39,8 +39,8 @@
                                 <label for="transaction_type" class="block text-sm font-medium text-gray-700">Charge Type</label>
                                 <select id="transaction_type" name="transaction_type" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" required>
                                     <option value="">Select charge type...</option>
-                                    <option value="interest" {{ old('transaction_type') == 'interest' ? 'selected' : '' }}>Interest</option>
-                                    <option value="penalty" {{ old('transaction_type') == 'penalty' ? 'selected' : '' }}>Penalty</option>
+                                    <option value="interest_payment" {{ old('transaction_type') == 'interest_payment' ? 'selected' : '' }}>Interest Payment</option>
+                                    <option value="penalty_fee" {{ old('transaction_type') == 'penalty_fee' ? 'selected' : '' }}>Penalty Fee</option>
                                     <option value="late_fee" {{ old('transaction_type') == 'late_fee' ? 'selected' : '' }}>Late Fee</option>
                                     <option value="processing_fee" {{ old('transaction_type') == 'processing_fee' ? 'selected' : '' }}>Processing Fee</option>
                                 </select>
@@ -67,11 +67,11 @@
                                 @enderror
                             </div>
 
-                            <!-- Description -->
+                            <!-- Notes -->
                             <div class="md:col-span-2">
-                                <label for="description" class="block text-sm font-medium text-gray-700">Description</label>
-                                <textarea id="description" name="description" rows="3" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" required>{{ old('description') }}</textarea>
-                                @error('description')
+                                <label for="notes" class="block text-sm font-medium text-gray-700">Notes</label>
+                                <textarea id="notes" name="notes" rows="3" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" required>{{ old('notes') }}</textarea>
+                                @error('notes')
                                     <p class="mt-2 text-sm text-red-600">{{ $message }}</p>
                                 @enderror
                             </div>

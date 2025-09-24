@@ -21,8 +21,8 @@ class LoanChargesController extends Controller
         
         // Get loans with their charges and arrears information
         $loans = Loan::where('organization_id', $organizationId)
-            ->with(['client', 'loanProduct', 'loanTransactions' => function($query) {
-                $query->whereIn('transaction_type', ['interest', 'penalty', 'late_fee', 'processing_fee'])
+            ->with(['client', 'loanProduct', 'transactions' => function($query) {
+                $query->whereIn('transaction_type', ['interest_payment', 'penalty_fee', 'late_fee', 'processing_fee'])
                       ->orderBy('transaction_date', 'desc');
             }])
             ->orderBy('created_at', 'desc')
@@ -32,21 +32,21 @@ class LoanChargesController extends Controller
         $totalOutstandingCharges = LoanTransaction::whereHas('loan', function($query) use ($organizationId) {
                 $query->where('organization_id', $organizationId);
             })
-            ->whereIn('transaction_type', ['interest', 'penalty', 'late_fee', 'processing_fee'])
+            ->whereIn('transaction_type', ['interest_payment', 'penalty_fee', 'late_fee', 'processing_fee'])
             ->where('status', 'pending')
             ->sum('amount');
 
         $totalCollectedCharges = LoanTransaction::whereHas('loan', function($query) use ($organizationId) {
                 $query->where('organization_id', $organizationId);
             })
-            ->whereIn('transaction_type', ['interest', 'penalty', 'late_fee', 'processing_fee'])
+            ->whereIn('transaction_type', ['interest_payment', 'penalty_fee', 'late_fee', 'processing_fee'])
             ->where('status', 'completed')
             ->sum('amount');
 
         $loansWithArrears = Loan::where('organization_id', $organizationId)
             ->where('status', 'active')
-            ->whereHas('loanTransactions', function($query) {
-                $query->whereIn('transaction_type', ['penalty', 'late_fee'])
+            ->whereHas('transactions', function($query) {
+                $query->whereIn('transaction_type', ['penalty_fee', 'late_fee'])
                       ->where('status', 'pending');
             })
             ->count();
@@ -82,9 +82,9 @@ class LoanChargesController extends Controller
     {
         $request->validate([
             'loan_id' => 'required|exists:loans,id',
-            'transaction_type' => 'required|in:interest,penalty,late_fee,processing_fee',
+            'transaction_type' => 'required|in:interest_payment,penalty_fee,late_fee,processing_fee',
             'amount' => 'required|numeric|min:0.01',
-            'description' => 'required|string|max:500',
+            'notes' => 'required|string|max:500',
             'transaction_date' => 'required|date|before_or_equal:today',
         ], [
             'loan_id.required' => 'Please select a loan.',
@@ -94,7 +94,7 @@ class LoanChargesController extends Controller
             'amount.required' => 'Charge amount is required.',
             'amount.numeric' => 'Charge amount must be a valid number.',
             'amount.min' => 'Charge amount must be greater than 0.',
-            'description.required' => 'Description is required.',
+            'notes.required' => 'Notes are required.',
             'transaction_date.required' => 'Transaction date is required.',
             'transaction_date.before_or_equal' => 'Transaction date cannot be in the future.',
         ]);
@@ -114,12 +114,14 @@ class LoanChargesController extends Controller
         // Create the charge transaction
         $transaction = LoanTransaction::create([
             'loan_id' => $loan->id,
+            'transaction_number' => 'CHG-' . strtoupper(uniqid()),
             'transaction_type' => $request->transaction_type,
             'amount' => $request->amount,
-            'description' => $request->description,
+            'notes' => $request->notes,
             'transaction_date' => $request->transaction_date,
             'status' => 'pending',
-            'created_by' => Auth::id(),
+            'processed_by' => Auth::id(),
+            'organization_id' => $organizationId,
         ]);
 
         return redirect()->route('loan-charges.index')
@@ -131,7 +133,7 @@ class LoanChargesController extends Controller
      */
     public function show(LoanTransaction $loanTransaction)
     {
-        $loanTransaction->load(['loan.client', 'loan.loanProduct', 'createdBy']);
+        $loanTransaction->load(['loan.client', 'loan.loanProduct', 'processedBy']);
         
         return view('loan-charges.show', compact('loanTransaction'));
     }
@@ -167,13 +169,13 @@ class LoanChargesController extends Controller
         
         $loans = Loan::where('organization_id', $organizationId)
             ->where('status', 'active')
-            ->with(['client', 'loanProduct', 'loanTransactions' => function($query) {
-                $query->whereIn('transaction_type', ['penalty', 'late_fee'])
+            ->with(['client', 'loanProduct', 'transactions' => function($query) {
+                $query->whereIn('transaction_type', ['penalty_fee', 'late_fee'])
                       ->where('status', 'pending')
                       ->orderBy('transaction_date', 'desc');
             }])
-            ->whereHas('loanTransactions', function($query) {
-                $query->whereIn('transaction_type', ['penalty', 'late_fee'])
+            ->whereHas('transactions', function($query) {
+                $query->whereIn('transaction_type', ['penalty_fee', 'late_fee'])
                       ->where('status', 'pending');
             })
             ->orderBy('created_at', 'desc')
@@ -259,16 +261,16 @@ class LoanChargesController extends Controller
             // Create a payment transaction record
             LoanTransaction::create([
                 'loan_id' => $loanTransaction->loan_id,
-                'transaction_type' => 'payment',
+                'transaction_number' => 'PAY-' . strtoupper(uniqid()),
+                'transaction_type' => 'principal_payment',
                 'amount' => $request->payment_amount,
-                'description' => "Payment for {$loanTransaction->transaction_type}: {$loanTransaction->description}",
+                'notes' => "Payment for {$loanTransaction->transaction_type}: {$loanTransaction->notes}",
                 'transaction_date' => now(),
                 'status' => 'completed',
                 'payment_method' => $request->payment_method,
-                'payment_reference' => $request->payment_reference,
-                'created_by' => Auth::id(),
+                'reference_number' => $request->payment_reference,
                 'processed_by' => Auth::id(),
-                'processed_at' => now(),
+                'organization_id' => $organizationId,
             ]);
 
             // Update loan outstanding balance
