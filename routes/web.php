@@ -177,12 +177,14 @@ Route::middleware([
         Route::get('/', [App\Http\Controllers\LoanChargesController::class, 'index'])->name('index');
         Route::get('/create', [App\Http\Controllers\LoanChargesController::class, 'create'])->name('create');
         Route::post('/', [App\Http\Controllers\LoanChargesController::class, 'store'])->name('store');
-        Route::get('/arrears', [App\Http\Controllers\LoanChargesController::class, 'arrears'])->name('arrears');
         Route::post('/bulk-update', [App\Http\Controllers\LoanChargesController::class, 'bulkUpdate'])->name('bulk-update');
         Route::get('/{loanTransaction}', [App\Http\Controllers\LoanChargesController::class, 'show'])->name('show');
         Route::patch('/{loanTransaction}/status', [App\Http\Controllers\LoanChargesController::class, 'updateStatus'])->name('update-status');
         Route::post('/{loanTransaction}/pay', [App\Http\Controllers\LoanChargesController::class, 'processPayment'])->name('pay');
     });
+    
+    // Arrears route (temporarily outside the group for testing)
+    Route::get('/loan-charges/arrears', [App\Http\Controllers\LoanChargesController::class, 'arrears'])->name('loan-charges.arrears');
 
     // Approvals Management
     Route::prefix('approvals')->name('approvals.')->group(function () {
@@ -309,6 +311,22 @@ if (config('app.debug')) {
     Route::get('/test-livewire-layout', function () {
         return view('test-livewire-layout');
     })->name('test.livewire.layout');
+    
+    // Test arrears route
+    Route::get('/test-arrears', function () {
+        return 'Arrears test route works!';
+    })->name('test.arrears');
+    
+    // Debug arrears route
+    Route::get('/debug-arrears', function () {
+        return response()->json([
+            'route_exists' => Route::has('loan-charges.arrears'),
+            'route_url' => route('loan-charges.arrears'),
+            'user_authenticated' => auth()->check(),
+            'user_id' => auth()->id(),
+            'organization_id' => auth()->user()->organization_id ?? 'null'
+        ]);
+    })->name('debug.arrears');
 }
 
 

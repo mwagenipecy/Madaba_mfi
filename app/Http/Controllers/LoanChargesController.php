@@ -184,7 +184,7 @@ class LoanChargesController extends Controller
         $totalArrearsAmount = LoanTransaction::whereHas('loan', function($query) use ($organizationId) {
                 $query->where('organization_id', $organizationId);
             })
-            ->whereIn('transaction_type', ['penalty', 'late_fee'])
+            ->whereIn('transaction_type', ['penalty_fee', 'late_fee'])
             ->where('status', 'pending')
             ->sum('amount');
 
