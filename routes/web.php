@@ -12,6 +12,13 @@ Route::get('/', function () {
     //return view('welcome');
 });
 
+
+Route::get('register', function () {
+
+    return redirect()->route('login');
+    //return view('welcome');
+});
+
 // Email Verification Routes
 Route::get('/email/verify', function () {
     return view('auth.verify-email');
@@ -266,6 +273,26 @@ Route::prefix('organization')->name('organization.')->group(function () {
     Route::get('/register', [App\Http\Controllers\OrganizationSettingController::class, 'showRegistrationForm'])->name('register');
     Route::post('/register', [App\Http\Controllers\OrganizationSettingController::class, 'processRegistration'])->name('register.process');
 });
+
+// Test routes for error pages (remove in production)
+if (config('app.debug')) {
+    Route::get('/test-error/{code}', function ($code) {
+        switch ($code) {
+            case '404':
+                abort(404);
+            case '403':
+                abort(403);
+            case '419':
+                abort(419);
+            case '500':
+                abort(500);
+            case '503':
+                abort(503);
+            default:
+                abort(500, 'Test error message');
+        }
+    })->name('test.error');
+}
 
 
 
