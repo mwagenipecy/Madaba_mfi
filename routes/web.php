@@ -172,6 +172,18 @@ Route::middleware([
         Route::post('/{loan}/top-up', [App\Http\Controllers\LoansController::class, 'topUpLoan'])->name('top-up');
     });
 
+    // Loan Charges Management
+    Route::prefix('loan-charges')->name('loan-charges.')->group(function () {
+        Route::get('/', [App\Http\Controllers\LoanChargesController::class, 'index'])->name('index');
+        Route::get('/create', [App\Http\Controllers\LoanChargesController::class, 'create'])->name('create');
+        Route::post('/', [App\Http\Controllers\LoanChargesController::class, 'store'])->name('store');
+        Route::get('/{loanTransaction}', [App\Http\Controllers\LoanChargesController::class, 'show'])->name('show');
+        Route::patch('/{loanTransaction}/status', [App\Http\Controllers\LoanChargesController::class, 'updateStatus'])->name('update-status');
+        Route::get('/arrears', [App\Http\Controllers\LoanChargesController::class, 'arrears'])->name('arrears');
+        Route::post('/bulk-update', [App\Http\Controllers\LoanChargesController::class, 'bulkUpdate'])->name('bulk-update');
+        Route::post('/{loanTransaction}/pay', [App\Http\Controllers\LoanChargesController::class, 'processPayment'])->name('pay');
+    });
+
     // Approvals Management
     Route::prefix('approvals')->name('approvals.')->group(function () {
         Route::get('/pending', [App\Http\Controllers\ApprovalsController::class, 'pending'])->name('pending');

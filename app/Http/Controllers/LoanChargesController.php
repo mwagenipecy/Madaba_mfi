@@ -218,4 +218,72 @@ class LoanChargesController extends Controller
         return redirect()->back()
             ->with('success', "{$updatedCount} charges marked as {$statusText} successfully.");
     }
+
+    /**
+     * Process payment for a charge
+     */
+    public function processPayment(Request $request, LoanTransaction $loanTransaction)
+    {
+        $request->validate([
+            'payment_amount' => 'required|numeric|min:0.01|max:' . $loanTransaction->amount,
+            'payment_method' => 'required|in:cash,bank_transfer,mobile_money',
+            'payment_reference' => 'nullable|string|max:100',
+            'notes' => 'nullable|string|max:500',
+        ]);
+
+        // Verify the charge belongs to user's organization
+        $organizationId = Auth::user()->organization_id ?? Organization::first()?->id;
+        $loan = $loanTransaction->loan;
+        
+        if ($loan->organization_id !== $organizationId) {
+            return redirect()->back()
+                ->withErrors(['error' => 'You do not have permission to process this payment.']);
+        }
+
+        // Check if charge is already paid
+        if ($loanTransaction->status === 'completed') {
+            return redirect()->back()
+                ->withErrors(['error' => 'This charge has already been paid.']);
+        }
+
+        DB::beginTransaction();
+        try {
+            // Update the charge status
+            $loanTransaction->update([
+                'status' => 'completed',
+                'notes' => $request->notes,
+                'processed_by' => Auth::id(),
+                'processed_at' => now(),
+            ]);
+
+            // Create a payment transaction record
+            LoanTransaction::create([
+                'loan_id' => $loanTransaction->loan_id,
+                'transaction_type' => 'payment',
+                'amount' => $request->payment_amount,
+                'description' => "Payment for {$loanTransaction->transaction_type}: {$loanTransaction->description}",
+                'transaction_date' => now(),
+                'status' => 'completed',
+                'payment_method' => $request->payment_method,
+                'payment_reference' => $request->payment_reference,
+                'created_by' => Auth::id(),
+                'processed_by' => Auth::id(),
+                'processed_at' => now(),
+            ]);
+
+            // Update loan outstanding balance
+            $loan->outstanding_balance = max(0, $loan->outstanding_balance - $request->payment_amount);
+            $loan->save();
+
+            DB::commit();
+
+            return redirect()->route('loan-charges.show', $loanTransaction)
+                ->with('success', 'Payment processed successfully.');
+                
+        } catch (\Exception $e) {
+            DB::rollback();
+            return redirect()->back()
+                ->withErrors(['error' => 'Failed to process payment. Please try again.']);
+        }
+    }
 }
