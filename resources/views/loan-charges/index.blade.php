@@ -1,22 +1,18 @@
-<x-app-layout>
-    <x-slot name="header">
-        <div class="flex justify-between items-center">
-            <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                {{ __('Loan Charges Management') }}
-            </h2>
-            <div class="flex space-x-2">
-                <a href="{{ route('loan-charges.create') }}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-                    Add Charge
-                </a>
-                <a href="{{ route('loan-charges.arrears') }}" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
-                    View Arrears
-                </a>
-            </div>
+<x-app-shell title="Loan Charges Management" header="Loan Charges Management">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Loan Charges Management</h1>
+        <div class="flex space-x-2">
+            <a href="{{ route('loan-charges.create') }}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                Add Charge
+            </a>
+            <a href="{{ route('loan-charges.arrears') }}" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">
+                View Arrears
+            </a>
         </div>
-    </x-slot>
+    </div>
 
-    <div class="py-12">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+    <div class="py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <!-- Summary Cards -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                 <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
@@ -217,4 +213,4 @@
             document.getElementById('paymentModal').classList.add('hidden');
         }
     </script>
-</x-app-layout>
+</x-app-shell>

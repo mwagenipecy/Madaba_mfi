@@ -1,24 +1,20 @@
-<x-app-layout>
-    <x-slot name="header">
-        <div class="flex justify-between items-center">
-            <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                {{ __('Charge Details') }}
-            </h2>
-            <div class="flex space-x-2">
-                <a href="{{ route('loan-charges.index') }}" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
-                    Back to Charges
-                </a>
-                @if($loanTransaction->status === 'pending')
-                    <button onclick="openPaymentModal()" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
-                        Process Payment
-                    </button>
-                @endif
-            </div>
+<x-app-shell title="Charge Details" header="Charge Details">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Charge Details</h1>
+        <div class="flex space-x-2">
+            <a href="{{ route('loan-charges.index') }}" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">
+                Back to Charges
+            </a>
+            @if($loanTransaction->status === 'pending')
+                <button onclick="openPaymentModal()" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                    Process Payment
+                </button>
+            @endif
         </div>
-    </x-slot>
+    </div>
 
-    <div class="py-12">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+    <div class="py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <!-- Charge Details -->
                 <div class="lg:col-span-2">
@@ -263,4 +259,4 @@
             document.getElementById('paymentModal').classList.add('hidden');
         }
     </script>
-</x-app-layout>
+</x-app-shell>

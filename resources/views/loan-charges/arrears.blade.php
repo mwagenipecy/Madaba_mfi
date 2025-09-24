@@ -1,22 +1,18 @@
-<x-app-layout>
-    <x-slot name="header">
-        <div class="flex justify-between items-center">
-            <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                {{ __('Loans with Arrears') }}
-            </h2>
-            <div class="flex space-x-2">
-                <a href="{{ route('loan-charges.index') }}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-                    All Charges
-                </a>
-                <a href="{{ route('loan-charges.create') }}" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
-                    Add Charge
-                </a>
-            </div>
+<x-app-shell title="Loans with Arrears" header="Loans with Arrears">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-2xl font-bold text-gray-900">Loans with Arrears</h1>
+        <div class="flex space-x-2">
+            <a href="{{ route('loan-charges.index') }}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+                All Charges
+            </a>
+            <a href="{{ route('loan-charges.create') }}" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
+                Add Charge
+            </a>
         </div>
-    </x-slot>
+    </div>
 
-    <div class="py-12">
-        <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
+    <div class="py-6">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <!-- Summary Card -->
             <div class="bg-red-50 border border-red-200 rounded-md p-6 mb-6">
                 <div class="flex">
@@ -180,4 +176,4 @@
             document.getElementById('bulkPaymentModal').classList.add('hidden');
         }
     </script>
-</x-app-layout>
+</x-app-shell>
