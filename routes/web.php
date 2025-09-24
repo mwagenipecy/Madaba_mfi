@@ -47,7 +47,7 @@ Route::middleware(['auth'])->group(function () {
 });
 
 // Custom multi-step registration flow
-Route::get('/register', RegisterFlow::class)->name('register');
+// Route::get('/register', RegisterFlow::class)->name('register');
 // Keep the previous fallback routes if used elsewhere
 Route::post('/register/step1', [RegistrationFlowController::class, 'step1Store'])->name('register.step1.store');
 Route::get('/register/plan', [RegistrationFlowController::class, 'showPlan'])->name('register.plan');
@@ -292,6 +292,11 @@ if (config('app.debug')) {
                 abort(500, 'Test error message');
         }
     })->name('test.error');
+    
+    // Test Livewire layout
+    Route::get('/test-livewire-layout', function () {
+        return view('test-livewire-layout');
+    })->name('test.livewire.layout');
 }
 
 

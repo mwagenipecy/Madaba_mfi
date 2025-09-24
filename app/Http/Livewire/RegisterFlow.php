@@ -5,7 +5,9 @@ namespace App\Http\Livewire;
 use Livewire\Component;
 use Illuminate\Support\Facades\Hash;
 use App\Models\User;
+use Livewire\Attributes\Layout;
 
+#[Layout('components.layouts.guest')]
 class RegisterFlow extends Component
 {
     public string $step = 'details';
