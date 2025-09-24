@@ -17,7 +17,7 @@ return new class extends Migration
             $table->unsignedBigInteger('from_account_id'); // Source account
             $table->unsignedBigInteger('to_account_id'); // Destination account
             $table->decimal('amount', 15, 2); // Transfer amount
-            $table->string('currency', 3)->default('USD'); // Currency
+            $table->string('currency', 3)->default('TZS'); // Currency
             $table->text('description'); // Transfer description
             $table->enum('status', ['pending', 'approved', 'completed', 'rejected', 'cancelled'])->default('pending');
             $table->unsignedBigInteger('requested_by'); // User who requested transfer

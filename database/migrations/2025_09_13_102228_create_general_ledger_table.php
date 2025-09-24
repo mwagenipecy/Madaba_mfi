@@ -18,7 +18,7 @@ return new class extends Migration
             $table->unsignedBigInteger('account_id'); // Account affected
             $table->enum('transaction_type', ['debit', 'credit']); // Debit or Credit
             $table->decimal('amount', 15, 2); // Transaction amount
-            $table->string('currency', 3)->default('USD'); // Currency code
+            $table->string('currency', 3)->default('TZS'); // Currency code
             $table->text('description'); // Transaction description
             $table->string('reference_type')->nullable(); // Type of reference (fund_transfer, recharge, etc.)
             $table->unsignedBigInteger('reference_id')->nullable(); // ID of the reference record

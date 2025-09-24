@@ -3,9 +3,9 @@
         <div class="px-6 py-4 border-b border-gray-200">
             <div class="flex items-center justify-between">
                 <h3 class="text-lg font-semibold text-gray-900">Organizations</h3>
-                <button wire:click="$dispatch('createOrganization')" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                <a href="{{ route('super-admin.organizations.create') }}" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
                     Add Organization
-                </button>
+                </a>
             </div>
         </div>
         
@@ -43,14 +43,21 @@
                                     </span>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                    <div class="flex space-x-2">
-                                        <button wire:click="$dispatch('editOrganization', {id: {{ $organization->id }}})" class="text-green-600 hover:text-green-700">Edit</button>
-                                        <button wire:click="$dispatch('createOrganizationUser', {id: {{ $organization->id }}})" class="text-blue-600 hover:text-blue-700">Users</button>
-                                        <button wire:click="$dispatch('viewOrganization', {id: {{ $organization->id }}})" class="text-gray-600 hover:text-gray-700">View</button>
+                                    <div class="flex space-x-3 items-center">
+                                        <a href="{{ route('organizations.edit', $organization->id) }}" class="text-green-600 hover:text-green-700">Edit</a>
+                                        <a href="{{ route('organizations.users', $organization->id) }}" class="text-blue-600 hover:text-blue-700">Users</a>
                                         @if($organization->status === 'active')
-                                            <button wire:click="disableOrganization({{ $organization->id }})" class="text-red-600 hover:text-red-700">Disable</button>
+                                            <form method="POST" action="{{ route('organizations.deactivate', $organization->id) }}" onsubmit="return confirm('Deactivate this organization?')" class="inline">
+                                                @csrf
+                                                @method('PATCH')
+                                                <button type="submit" class="text-red-600 hover:text-red-700">Deactivate</button>
+                                            </form>
                                         @else
-                                            <button wire:click="enableOrganization({{ $organization->id }})" class="text-green-600 hover:text-green-700">Enable</button>
+                                            <form method="POST" action="{{ route('organizations.reactivate', $organization->id) }}" onsubmit="return confirm('Reactivate this organization?')" class="inline">
+                                                @csrf
+                                                @method('PATCH')
+                                                <button type="submit" class="text-green-600 hover:text-green-700">Reactivate</button>
+                                            </form>
                                         @endif
                                     </div>
                                 </td>
@@ -66,9 +73,9 @@
                 </svg>
                 <p>No organizations found</p>
                 <p class="text-sm mt-1">Create your first organization to get started</p>
-                <button wire:click="$dispatch('createOrganization')" class="mt-4 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                <a href="{{ route('super-admin.organizations.create') }}" class="mt-4 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
                     Create Organization
-                </button>
+                </a>
             </div>
         @endif
     </div>

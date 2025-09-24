@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use App\Models\Account;
 
 class Organization extends Model
 {
@@ -63,6 +65,22 @@ class Organization extends Model
     public function admins()
     {
         return $this->users()->whereIn('role', ['super_admin', 'admin']);
+    }
+
+    /**
+     * Get the branches that belong to the organization
+     */
+    public function branches(): HasMany
+    {
+        return $this->hasMany(Branch::class);
+    }
+
+    /**
+     * Get the accounts that belong to the organization
+     */
+    public function accounts(): HasMany
+    {
+        return $this->hasMany(Account::class);
     }
 
     public function approvedBy()

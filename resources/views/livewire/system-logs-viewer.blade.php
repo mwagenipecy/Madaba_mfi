@@ -71,8 +71,10 @@
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Level</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
-                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Message</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IP Address</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Model</th>
                         </tr>
                     </thead>
                     <tbody class="bg-white divide-y divide-gray-200">
@@ -91,15 +93,33 @@
                                     </span>
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                    {{ ucwords(str_replace('_', ' ', $log->action_type)) }}
+                                    {{ ucwords(str_replace('_', ' ', $log->action)) }}
                                 </td>
                                 <td class="px-6 py-4 text-sm text-gray-900">
-                                    <div class="max-w-xs truncate" title="{{ $log->message }}">
-                                        {{ $log->message }}
+                                    <div class="max-w-xs truncate" title="{{ $log->description }}">
+                                        {{ $log->description }}
                                     </div>
+                                    @if($log->data && count($log->data) > 0)
+                                        <button onclick="toggleData({{ $log->id }})" class="text-xs text-blue-600 hover:text-blue-800 mt-1">
+                                            View Details
+                                        </button>
+                                        <div id="data-{{ $log->id }}" class="hidden mt-2 p-2 bg-gray-50 rounded text-xs">
+                                            <pre class="whitespace-pre-wrap">{{ json_encode($log->data, JSON_PRETTY_PRINT) }}</pre>
+                                        </div>
+                                    @endif
                                 </td>
                                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                     {{ $log->user->name ?? 'System' }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    {{ $log->ip_address ?? '-' }}
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                    @if($log->model_type && $log->model_id)
+                                        {{ class_basename($log->model_type) }} #{{ $log->model_id }}
+                                    @else
+                                        -
+                                    @endif
                                 </td>
                             </tr>
                         @endforeach
@@ -122,4 +142,15 @@
             </div>
         @endif
     </div>
+
+    <script>
+        function toggleData(logId) {
+            const dataDiv = document.getElementById('data-' + logId);
+            if (dataDiv.classList.contains('hidden')) {
+                dataDiv.classList.remove('hidden');
+            } else {
+                dataDiv.classList.add('hidden');
+            }
+        }
+    </script>
 </div>

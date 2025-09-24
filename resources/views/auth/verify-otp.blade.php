@@ -184,7 +184,21 @@
         // Logout function
         function logout() {
             if (confirm('Are you sure you want to logout and use a different account?')) {
-                window.location.href = '{{ route("otp.logout") }}';
+                // Create a form to submit POST request
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '{{ route("otp.logout") }}';
+                
+                // Add CSRF token
+                const csrfToken = document.createElement('input');
+                csrfToken.type = 'hidden';
+                csrfToken.name = '_token';
+                csrfToken.value = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                form.appendChild(csrfToken);
+                
+                // Add to DOM and submit
+                document.body.appendChild(form);
+                form.submit();
             }
         }
 

@@ -31,8 +31,8 @@ class SystemLogsViewer extends Component
         // Apply search filter
         if ($this->search) {
             $query->where(function($q) {
-                $q->where('message', 'like', '%' . $this->search . '%')
-                  ->orWhere('action_type', 'like', '%' . $this->search . '%');
+                $q->where('description', 'like', '%' . $this->search . '%')
+                  ->orWhere('action', 'like', '%' . $this->search . '%');
             });
         }
 
@@ -43,7 +43,7 @@ class SystemLogsViewer extends Component
 
         // Apply action filter
         if ($this->actionFilter) {
-            $query->where('action_type', $this->actionFilter);
+            $query->where('action', $this->actionFilter);
         }
 
         // Apply date filters

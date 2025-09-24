@@ -32,7 +32,22 @@ class AccountsController extends Controller
      */
     public function mainAccounts()
     {
-        return view('accounts.main-accounts');
+        $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
+
+        // Fetch main category accounts (no parent) scoped to organization and without branch
+        $categories = Account::withCount(['childAccounts as sub_accounts_count' => function($q) use ($organizationId) {
+                $q->where('organization_id', $organizationId);
+            }])
+            ->withSum(['childAccounts as total_balance' => function($q) use ($organizationId) {
+                $q->where('organization_id', $organizationId);
+            }], 'balance')
+            ->whereNull('parent_account_id')
+            ->whereNull('branch_id')
+            ->where('organization_id', $organizationId)
+            ->with('accountType')
+            ->get();
+
+        return view('accounts.main-accounts', compact('categories'));
     }
 
     /**
@@ -56,11 +71,16 @@ class AccountsController extends Controller
      */
     public function create()
     {
+        $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
         $accountTypes = AccountType::all();
-        $organizations = Organization::all();
-        $branches = Branch::all();
-        
-        return view('accounts.create', compact('accountTypes', 'organizations', 'branches'));
+        $organizations = Organization::where('id', $organizationId)->get();
+        $branches = Branch::where('organization_id', $organizationId)->get();
+        $parentAccounts = Account::where('organization_id', $organizationId)
+            ->whereNull('branch_id')
+            ->whereNull('parent_account_id')
+            ->get();
+
+        return view('accounts.create', compact('accountTypes', 'organizations', 'branches', 'parentAccounts', 'organizationId'));
     }
 
     /**
@@ -73,11 +93,23 @@ class AccountsController extends Controller
             'account_type_id' => 'required|exists:account_types,id',
             'organization_id' => 'required|exists:organizations,id',
             'branch_id' => 'nullable|exists:branches,id',
+            'parent_account_id' => 'nullable|exists:accounts,id',
             'opening_balance' => 'required|numeric|min:0',
             'currency' => 'required|string|size:3',
             'description' => 'nullable|string',
             'status' => 'required|in:active,inactive,suspended,closed',
         ]);
+
+        // Enforce default organization to authenticated user's organization
+        $validated['organization_id'] = auth()->user()->organization_id ?? $validated['organization_id'];
+
+        // Ensure selected branch belongs to organization if provided
+        if (!empty($validated['branch_id'])) {
+            $branchBelongs = Branch::where('id', $validated['branch_id'])
+                ->where('organization_id', $validated['organization_id'])
+                ->exists();
+            abort_unless($branchBelongs, 422, 'Selected branch does not belong to your organization');
+        }
 
         // Generate unique account number
         $accountType = AccountType::find($validated['account_type_id']);
@@ -86,6 +118,25 @@ class AccountsController extends Controller
         $validated['opening_date'] = now();
 
         $account = Account::create($validated);
+
+        // Record zero-amount ledger transaction for creation (audit trail)
+        \App\Models\GeneralLedger::create([
+            'organization_id' => $account->organization_id,
+            'branch_id' => $account->branch_id,
+            'transaction_id' => 'ACCT-OPEN-' . now()->format('YmdHis') . '-' . $account->id,
+            'transaction_date' => now()->toDateString(),
+            'account_id' => $account->id,
+            'transaction_type' => 'credit',
+            'amount' => 0,
+            'currency' => $account->currency,
+            'description' => 'Account opened with opening balance recorded separately',
+            'reference_type' => Account::class,
+            'reference_id' => $account->id,
+            'created_by' => auth()->id(),
+            'approved_by' => null,
+            'approved_at' => null,
+            'balance_after' => $account->balance,
+        ]);
 
         SystemLog::log(
             'account_created',
@@ -105,6 +156,31 @@ class AccountsController extends Controller
     {
         $account->load(['accountType', 'organization', 'branch', 'realAccount']);
         return view('accounts.show', compact('account'));
+    }
+
+    /**
+     * List sub-accounts under a main category across branches with balances
+     */
+    public function subAccountsByCategory(Account $account)
+    {
+        $organizationId = auth()->user()->organization_id ?? $account->organization_id;
+
+        // Ensure provided account is a main category account
+        abort_if(!is_null($account->parent_account_id), 404);
+
+        $subAccounts = Account::with(['branch'])
+            ->where('organization_id', $organizationId)
+            ->where('parent_account_id', $account->id)
+            ->orderBy('branch_id')
+            ->get();
+
+        $totalBalance = $subAccounts->sum('balance');
+
+        return view('accounts.subaccounts', [
+            'category' => $account,
+            'subAccounts' => $subAccounts,
+            'totalBalance' => $totalBalance,
+        ]);
     }
 
     /**

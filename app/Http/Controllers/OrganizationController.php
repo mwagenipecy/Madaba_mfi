@@ -47,4 +47,45 @@ class OrganizationController extends Controller
     {
         return view('organizations.edit', compact('organization'));
     }
+
+    /**
+     * Update organization details
+     */
+    public function update(Request $request, Organization $organization)
+    {
+        $validated = $request->validate([
+            'name' => 'sometimes|string|max:255',
+            'registration_number' => 'sometimes|string|max:255',
+            'email' => 'sometimes|email|max:255',
+            'phone' => 'sometimes|string|max:255',
+            'address' => 'sometimes|string',
+            'city' => 'sometimes|string|max:255',
+            'state' => 'sometimes|string|max:255',
+            'country' => 'sometimes|string|max:255',
+            'postal_code' => 'sometimes|string|max:255',
+            'website' => 'nullable|url|max:255',
+        ]);
+
+        $organization->update($validated);
+
+        return redirect()->route('organizations.index')->with('success', 'Organization updated successfully.');
+    }
+
+    /**
+     * Deactivate (suspend) organization
+     */
+    public function deactivate(Organization $organization)
+    {
+        $organization->suspend();
+        return back()->with('success', 'Organization deactivated successfully.');
+    }
+
+    /**
+     * Reactivate organization
+     */
+    public function reactivate(Organization $organization)
+    {
+        $organization->activate();
+        return back()->with('success', 'Organization reactivated successfully.');
+    }
 }

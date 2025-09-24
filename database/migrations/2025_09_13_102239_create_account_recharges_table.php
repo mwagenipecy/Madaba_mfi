@@ -16,7 +16,7 @@ return new class extends Migration
             $table->string('recharge_number')->unique(); // Unique recharge number
             $table->unsignedBigInteger('main_account_id'); // Main account being recharged
             $table->decimal('recharge_amount', 15, 2); // Total recharge amount
-            $table->string('currency', 3)->default('USD'); // Currency
+            $table->string('currency', 3)->default('TZS'); // Currency
             $table->text('description'); // Recharge description
             $table->enum('status', ['pending', 'approved', 'completed', 'rejected', 'cancelled'])->default('pending');
             $table->unsignedBigInteger('requested_by'); // User who requested recharge

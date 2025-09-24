@@ -20,7 +20,7 @@ return new class extends Migration
             $table->unsignedBigInteger('branch_id')->nullable(); // Branch-specific account (null for main accounts)
             $table->decimal('balance', 15, 2)->default(0.00); // Current balance
             $table->decimal('opening_balance', 15, 2)->default(0.00); // Opening balance
-            $table->string('currency', 3)->default('USD'); // Currency code
+            $table->string('currency', 3)->default('TZS'); // Currency code
             $table->text('description')->nullable();
             $table->enum('status', ['active', 'inactive', 'suspended', 'closed'])->default('active');
             $table->timestamp('opening_date')->nullable();

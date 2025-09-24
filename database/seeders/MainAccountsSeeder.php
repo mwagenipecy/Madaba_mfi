@@ -40,7 +40,7 @@ class MainAccountsSeeder extends Seeder
                     'parent_account_id' => null, // These are main category accounts
                     'balance' => 0.00,
                     'opening_balance' => 0.00,
-                    'currency' => 'USD',
+                    'currency' => 'TZS',
                     'description' => 'Main ' . $accountType->name . ' category for ' . $organization->name,
                     'status' => 'active',
                     'opening_date' => now(),

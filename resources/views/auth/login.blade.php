@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wibook finance - Login</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Financing - Login</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .custom-green {
@@ -73,25 +74,35 @@
                 <!-- Logo -->
                 <div class="mb-8">
                     <div class="inline-flex items-center justify-center w-20 h-20 bg-white rounded-full mb-4 overflow-hidden">
-                        <img src="{{ asset('logo/image.png') }}" alt="Logo" class="w-16 h-16 object-contain" />
+                        <img src="{{ asset('logo/wibook.png') }}" alt="Logo" class="w-16 h-16 object-contain" />
                     </div>
+                    <h2 class="text-2xl font-bold text-white">Financing</h2>
                 </div>
 
                 <!-- Welcome Text -->
                 <h1 class="text-4xl font-semibold mb-4">Welcome Back!</h1>
-                <p class="text-sm opacity-90 mb-8">To stay connected with us<br>please login with your personal info</p>
+                <p class="text-sm opacity-90 mb-8">Access your financial management dashboard<br>and continue your work</p>
 
-                <!-- Sign In Button -->
-                <button class="w-full py-3 px-8 border-2 border-white rounded-full text-white font-medium hover:bg-white hover:text-green-800 transition duration-300 mb-8">
-                    SIGN IN
-                </button>
-
-                <!-- Creator Links -->
-                <div class="text-xs opacity-80">
-                    <span>CREATOR </span>
-                    <a href="#" class="underline hover:no-underline">HERE</a>
-                    <span> | DIRECTOR </span>
-                    <a href="#" class="underline hover:no-underline">HERE</a>
+                <!-- Features List -->
+                <div class="text-left space-y-2 text-sm opacity-90">
+                    <div class="flex items-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        Loan Management
+                    </div>
+                    <div class="flex items-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        Financial Analytics
+                    </div>
+                    <div class="flex items-center">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        Real-time Reporting
+                    </div>
                 </div>
             </div>
         </div>
@@ -100,21 +111,23 @@
         <div class="hidden md:flex w-1/2 flex-col justify-center items-center bg-white p-8 right-curve">
             <div class="w-full max-w-md">
                 <!-- Welcome Header -->
-                <h2 class="text-4xl font-semibold text-green-800 mb-2 text-center" style="color: #176836;">welcome</h2>
-                <p class="text-gray-600 text-center mb-8">Login in to your account to continue</p>
+                <h2 class="text-4xl font-semibold text-green-800 mb-2 text-center" style="color: #176836;">Welcome</h2>
+                <p class="text-gray-600 text-center mb-8">Sign in to your account to continue</p>
 
                 <!-- Login Form -->
                 <form class="space-y-4" method="POST" action="{{ route('login') }}">
                     @csrf
                     <!-- Email Input -->
                     <div>
+                        <label for="email" class="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
                         <input 
                             type="email" 
                             name="email"
+                            id="email"
                             value="{{ old('email') }}"
-                            placeholder="Email..........................."
+                            placeholder="Enter your email address"
                             autocomplete="username"
-                            class="w-full px-6 py-4 rounded-full light-green-bg placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-green-600 transition duration-300"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition duration-300"
                             required
                         >
                         @error('email')
@@ -124,14 +137,27 @@
 
                     <!-- Password Input -->
                     <div>
-                        <input 
-                            type="password" 
-                            name="password"
-                            placeholder="Password..........................."
-                            autocomplete="current-password"
-                            class="w-full px-6 py-4 rounded-full light-green-bg placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-green-600 transition duration-300"
-                            required
-                        >
+                        <label for="password" class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                        <div class="relative">
+                            <input 
+                                type="password" 
+                                name="password"
+                                id="password"
+                                placeholder="Enter your password"
+                                autocomplete="current-password"
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition duration-300"
+                                required
+                            >
+                            <button type="button" onclick="togglePassword()" class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                                <svg id="eye-open" class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                </svg>
+                                <svg id="eye-closed" class="h-5 w-5 text-gray-400 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"></path>
+                                </svg>
+                            </button>
+                        </div>
                         @error('password')
                             <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                         @enderror
@@ -142,22 +168,36 @@
                         <a href="{{ route('password.request') }}" class="text-sm text-gray-600 hover:text-green-700 transition duration-300">Forgot your password?</a>
                     </div>
 
+                    <!-- Remember Me Checkbox -->
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center">
+                            <input 
+                                id="remember" 
+                                name="remember" 
+                                type="checkbox" 
+                                class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                            >
+                            <label for="remember" class="ml-2 block text-sm text-gray-700">
+                                Remember me
+                            </label>
+                        </div>
+                    </div>
+
                     <!-- Login Button -->
                     <div class="pt-4">
                         <button 
                             type="submit" 
-                            class="w-full py-4 px-8 rounded-full text-white font-medium transition duration-300 hover:opacity-90 custom-green"
+                            class="w-full py-3 px-4 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-300"
                         >
-                            LOG IN
+                            <span class="flex items-center justify-center">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path>
+                                </svg>
+                                Sign In
+                            </span>
                         </button>
                     </div>
                 </form>
-
-                <!-- Sign Up Link -->
-                <p class="text-center mt-6 text-gray-600">
-                    Don't have an account? 
-                    <a href="{{ route('register') }}" class="text-green-700 hover:underline font-medium" style="color: #176836;">sign up</a>
-                </p>
             </div>
         </div>
 
@@ -167,27 +207,29 @@
                 <!-- Logo for mobile -->
                 <div class="mb-6 text-center">
                     <div class="inline-flex items-center justify-center w-14 h-14 bg-green-100 rounded-full mb-2 overflow-hidden">
-                        <img src="{{ asset('logo/image.png') }}" alt="Wibook finance logo" class="w-12 h-12 object-contain" />
+                        <img src="{{ asset('logo/wibook.png') }}" alt="Financing logo" class="w-12 h-12 object-contain" />
                     </div>
-                    <h3 class="text-lg font-medium text-green-800" style="color: #176836;">Wibook finance</h3>
+                    <h3 class="text-lg font-medium text-green-800" style="color: #176836;">Financing</h3>
                 </div>
 
                 <!-- Welcome Header -->
                 <h2 class="text-3xl font-semibold text-green-800 mb-2 text-center" style="color: #176836;">Welcome Back!</h2>
-                <p class="text-gray-600 text-center mb-6 text-sm">Login to your account to continue</p>
+                <p class="text-gray-600 text-center mb-6 text-sm">Sign in to your account to continue</p>
 
                 <!-- Login Form -->
                 <form class="space-y-3" method="POST" action="{{ route('login') }}">
                     @csrf
                     <!-- Email Input -->
                     <div>
+                        <label for="email_mobile" class="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
                         <input 
                             type="email" 
                             name="email"
+                            id="email_mobile"
                             value="{{ old('email') }}"
-                            placeholder="Email..........................."
+                            placeholder="Enter your email address"
                             autocomplete="username"
-                            class="w-full px-5 py-3 rounded-full light-green-bg placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-green-600 transition duration-300 text-sm"
+                            class="w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition duration-300 text-sm"
                             required
                         >
                         @error('email')
@@ -197,14 +239,27 @@
 
                     <!-- Password Input -->
                     <div>
-                        <input 
-                            type="password" 
-                            name="password"
-                            placeholder="Password..........................."
-                            autocomplete="current-password"
-                            class="w-full px-5 py-3 rounded-full light-green-bg placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-green-600 transition duration-300 text-sm"
-                            required
-                        >
+                        <label for="password_mobile" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                        <div class="relative">
+                            <input 
+                                type="password" 
+                                name="password"
+                                id="password_mobile"
+                                placeholder="Enter your password"
+                                autocomplete="current-password"
+                                class="w-full px-4 py-3 border border-gray-300 rounded-lg placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition duration-300 text-sm"
+                                required
+                            >
+                            <button type="button" onclick="togglePasswordMobile()" class="absolute inset-y-0 right-0 pr-3 flex items-center">
+                                <svg id="eye-open-mobile" class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                </svg>
+                                <svg id="eye-closed-mobile" class="h-4 w-4 text-gray-400 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878L21 21"></path>
+                                </svg>
+                            </button>
+                        </div>
                         @error('password')
                             <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
                         @enderror
@@ -215,24 +270,100 @@
                         <a href="{{ route('password.request') }}" class="text-xs text-gray-600 hover:text-green-700 transition duration-300">Forgot your password?</a>
                     </div>
 
+                    <!-- Remember Me Checkbox -->
+                    <div class="flex items-center">
+                        <input 
+                            id="remember_mobile" 
+                            name="remember" 
+                            type="checkbox" 
+                            class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                        >
+                        <label for="remember_mobile" class="ml-2 block text-xs text-gray-700">
+                            Remember me
+                        </label>
+                    </div>
+
                     <!-- Login Button -->
                     <div class="pt-3">
                         <button 
                             type="submit" 
-                            class="w-full py-3 px-6 rounded-full text-white font-medium transition duration-300 hover:opacity-90 custom-green text-sm"
+                            class="w-full py-3 px-4 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-300 text-sm"
                         >
-                            LOG IN
+                            <span class="flex items-center justify-center">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path>
+                                </svg>
+                                Sign In
+                            </span>
                         </button>
                     </div>
                 </form>
-
-                <!-- Sign Up Link -->
-                <p class="text-center mt-4 text-gray-600 text-sm">
-                    Don't have an account? 
-                    <a href="{{ route('register') }}" class="text-green-700 hover:underline font-medium" style="color: #176836;">sign up</a>
-                </p>
             </div>
         </div>
     </div>
+
+    <script>
+        // Password toggle functionality for desktop
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const eyeOpen = document.getElementById('eye-open');
+            const eyeClosed = document.getElementById('eye-closed');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                eyeOpen.classList.add('hidden');
+                eyeClosed.classList.remove('hidden');
+            } else {
+                passwordInput.type = 'password';
+                eyeOpen.classList.remove('hidden');
+                eyeClosed.classList.add('hidden');
+            }
+        }
+
+        // Password toggle functionality for mobile
+        function togglePasswordMobile() {
+            const passwordInput = document.getElementById('password_mobile');
+            const eyeOpen = document.getElementById('eye-open-mobile');
+            const eyeClosed = document.getElementById('eye-closed-mobile');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                eyeOpen.classList.add('hidden');
+                eyeClosed.classList.remove('hidden');
+            } else {
+                passwordInput.type = 'password';
+                eyeOpen.classList.remove('hidden');
+                eyeClosed.classList.add('hidden');
+            }
+        }
+
+        // Auto-focus on email input
+        document.addEventListener('DOMContentLoaded', function() {
+            const emailInput = document.getElementById('email') || document.getElementById('email_mobile');
+            if (emailInput) {
+                emailInput.focus();
+            }
+        });
+
+        // Form validation
+        document.querySelectorAll('form').forEach(form => {
+            form.addEventListener('submit', function(e) {
+                const email = form.querySelector('input[type="email"]').value;
+                const password = form.querySelector('input[type="password"]').value;
+                
+                if (!email || !password) {
+                    e.preventDefault();
+                    alert('Please fill in all required fields.');
+                    return false;
+                }
+                
+                if (!email.includes('@')) {
+                    e.preventDefault();
+                    alert('Please enter a valid email address.');
+                    return false;
+                }
+            });
+        });
+    </script>
 </body>
 </html>

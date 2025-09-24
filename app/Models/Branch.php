@@ -27,11 +27,13 @@ class Branch extends Model
         'manager_email',
         'manager_phone',
         'status',
+        'is_hq',
         'established_date',
     ];
 
     protected $casts = [
         'established_date' => 'datetime',
+        'is_hq' => 'boolean',
     ];
 
     /**
@@ -64,6 +66,14 @@ class Branch extends Model
     public function scopeByOrganization($query, $organizationId)
     {
         return $query->where('organization_id', $organizationId);
+    }
+
+    /**
+     * Scope to get HQ branches
+     */
+    public function scopeHq($query)
+    {
+        return $query->where('is_hq', true);
     }
 
     /**

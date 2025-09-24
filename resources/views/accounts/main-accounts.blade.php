@@ -15,135 +15,46 @@
 
         <!-- Account Categories Grid -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <!-- Assets -->
-            <div class="bg-white rounded-lg shadow-sm p-6 border-l-4 border-green-500">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-semibold text-gray-900">Assets</h3>
-                    <span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">
-                        Debit Balance
-                    </span>
-                </div>
-                <p class="text-gray-600 text-sm mb-4">Resources owned by the organization</p>
-                <div class="space-y-2">
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">Total Balance:</span>
-                        <span class="font-semibold text-green-600">TZS 0.00</span>
+            @forelse($categories as $category)
+                @php
+                    $borderColor = match(optional($category->accountType)->name) {
+                        'Assets' => 'border-green-500',
+                        'Revenue' => 'border-blue-500',
+                        'Liability' => 'border-yellow-500',
+                        'Equity' => 'border-purple-500',
+                        'Expense' => 'border-red-500',
+                        default => 'border-gray-300'
+                    };
+                    $badge = in_array(optional($category->accountType)->name, ['Assets','Expense']) ? 'Debit Balance' : 'Credit Balance';
+                    $balanceColor = in_array(optional($category->accountType)->name, ['Assets','Expense']) ? 'text-green-600' : 'text-blue-600';
+                @endphp
+                <div class="bg-white rounded-lg shadow-sm p-6 border-l-4 {{ $borderColor }}">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold text-gray-900">{{ $category->name }}</h3>
+                        <span class="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">{{ $badge }}</span>
                     </div>
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">Sub-Accounts:</span>
-                        <span class="font-semibold">0</span>
+                    <p class="text-gray-600 text-sm mb-4">{{ optional($category->accountType)->name }} category</p>
+                    <div class="space-y-2">
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-600">Total Balance:</span>
+                            <span class="font-semibold {{ $balanceColor }}">TZS {{ number_format($category->total_balance ?? 0, 2) }}</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-600">Sub-Accounts:</span>
+                            <span class="font-semibold">{{ $category->sub_accounts_count }}</span>
+                        </div>
                     </div>
-                </div>
-                <div class="mt-4 pt-4 border-t border-gray-200">
-                    <a href="#" class="text-green-600 hover:text-green-700 text-sm font-medium">
-                        View Sub-Accounts →
-                    </a>
-                </div>
-            </div>
-
-            <!-- Revenue -->
-            <div class="bg-white rounded-lg shadow-sm p-6 border-l-4 border-blue-500">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-semibold text-gray-900">Revenue</h3>
-                    <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium">
-                        Credit Balance
-                    </span>
-                </div>
-                <p class="text-gray-600 text-sm mb-4">Income generated from operations</p>
-                <div class="space-y-2">
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">Total Balance:</span>
-                        <span class="font-semibold text-blue-600">TZS 0.00</span>
-                    </div>
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">Sub-Accounts:</span>
-                        <span class="font-semibold">0</span>
+                    <div class="mt-4 pt-4 border-t border-gray-200">
+                        <a href="{{ route('accounts.main-accounts.subaccounts', $category) }}" class="text-green-600 hover:text-green-700 text-sm font-medium">
+                            View Sub-Accounts →
+                        </a>
                     </div>
                 </div>
-                <div class="mt-4 pt-4 border-t border-gray-200">
-                    <a href="#" class="text-blue-600 hover:text-blue-700 text-sm font-medium">
-                        View Sub-Accounts →
-                    </a>
+            @empty
+                <div class="col-span-3">
+                    <div class="p-6 text-center text-gray-500 border rounded-lg">No main categories found.</div>
                 </div>
-            </div>
-
-            <!-- Liability -->
-            <div class="bg-white rounded-lg shadow-sm p-6 border-l-4 border-yellow-500">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-semibold text-gray-900">Liability</h3>
-                    <span class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-medium">
-                        Credit Balance
-                    </span>
-                </div>
-                <p class="text-gray-600 text-sm mb-4">Debts and obligations to others</p>
-                <div class="space-y-2">
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">Total Balance:</span>
-                        <span class="font-semibold text-yellow-600">TZS 0.00</span>
-                    </div>
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">Sub-Accounts:</span>
-                        <span class="font-semibold">0</span>
-                    </div>
-                </div>
-                <div class="mt-4 pt-4 border-t border-gray-200">
-                    <a href="#" class="text-yellow-600 hover:text-yellow-700 text-sm font-medium">
-                        View Sub-Accounts →
-                    </a>
-                </div>
-            </div>
-
-            <!-- Equity -->
-            <div class="bg-white rounded-lg shadow-sm p-6 border-l-4 border-purple-500">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-semibold text-gray-900">Equity</h3>
-                    <span class="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs font-medium">
-                        Credit Balance
-                    </span>
-                </div>
-                <p class="text-gray-600 text-sm mb-4">Owner's stake in the organization</p>
-                <div class="space-y-2">
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">Total Balance:</span>
-                        <span class="font-semibold text-purple-600">TZS 0.00</span>
-                    </div>
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">Sub-Accounts:</span>
-                        <span class="font-semibold">0</span>
-                    </div>
-                </div>
-                <div class="mt-4 pt-4 border-t border-gray-200">
-                    <a href="#" class="text-purple-600 hover:text-purple-700 text-sm font-medium">
-                        View Sub-Accounts →
-                    </a>
-                </div>
-            </div>
-
-            <!-- Expense -->
-            <div class="bg-white rounded-lg shadow-sm p-6 border-l-4 border-red-500">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-semibold text-gray-900">Expense</h3>
-                    <span class="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium">
-                        Debit Balance
-                    </span>
-                </div>
-                <p class="text-gray-600 text-sm mb-4">Costs incurred in operations</p>
-                <div class="space-y-2">
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">Total Balance:</span>
-                        <span class="font-semibold text-red-600">TZS 0.00</span>
-                    </div>
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600">Sub-Accounts:</span>
-                        <span class="font-semibold">0</span>
-                    </div>
-                </div>
-                <div class="mt-4 pt-4 border-t border-gray-200">
-                    <a href="#" class="text-red-600 hover:text-red-700 text-sm font-medium">
-                        View Sub-Accounts →
-                    </a>
-                </div>
-            </div>
+            @endforelse
         </div>
 
         <!-- Quick Actions -->

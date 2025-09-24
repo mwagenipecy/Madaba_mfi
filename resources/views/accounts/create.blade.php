@@ -39,19 +39,18 @@
                         </select>
                     </div>
 
-                    <!-- Organization -->
+                    <!-- Organization (default to user's organization) -->
                     <div>
                         <label for="organization_id" class="block text-sm font-medium text-gray-700 mb-2">Organization</label>
                         <select id="organization_id" name="organization_id" required
                                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
-                            <option value="">Select organization</option>
                             @foreach($organizations as $organization)
-                                <option value="{{ $organization->id }}">{{ $organization->name }}</option>
+                                <option value="{{ $organization->id }}" {{ $organizationId == $organization->id ? 'selected' : '' }}>{{ $organization->name }}</option>
                             @endforeach
                         </select>
                     </div>
 
-                    <!-- Branch (Optional) -->
+                    <!-- Branch (Optional, only branches in user's organization) -->
                     <div>
                         <label for="branch_id" class="block text-sm font-medium text-gray-700 mb-2">Branch (Optional)</label>
                         <select id="branch_id" name="branch_id"
@@ -61,6 +60,19 @@
                                 <option value="{{ $branch->id }}">{{ $branch->name }}</option>
                             @endforeach
                         </select>
+                    </div>
+
+                    <!-- Parent Account (for sub-accounts) -->
+                    <div>
+                        <label for="parent_account_id" class="block text-sm font-medium text-gray-700 mb-2">Parent Account (for Sub-Account)</label>
+                        <select id="parent_account_id" name="parent_account_id"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                            <option value="">None (Create main category account)</option>
+                            @foreach($parentAccounts as $parent)
+                                <option value="{{ $parent->id }}">{{ $parent->name }} ({{ $parent->account_number }})</option>
+                            @endforeach
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">Selecting a parent makes this a sub-account for reporting.</p>
                     </div>
 
                     <!-- Opening Balance -->
@@ -77,7 +89,7 @@
                         <select id="currency" name="currency" required
                                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
                             <option value="TZS" selected>TZS (Tanzanian Shilling)</option>
-                            <option value="USD">USD (US Dollar)</option>
+                            <option value="TZS">TZS (Tanzanian Shilling)</option>
                             <option value="EUR">EUR (Euro)</option>
                             <option value="GBP">GBP (British Pound)</option>
                         </select>

@@ -19,5 +19,7 @@
 
         <!-- Create Organization User Component -->
         <livewire:create-organization-user :organization="$organization" />
+
+     
     </div>
 </x-app-shell>
