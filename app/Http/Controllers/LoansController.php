@@ -766,7 +766,7 @@ class LoansController extends Controller
             $transaction = LoanTransaction::create([
                 'loan_id' => $loan->id,
                 'transaction_number' => LoanTransaction::generateTransactionNumber(),
-                'transaction_type' => 'repayment',
+                'transaction_type' => 'principal_payment',
                 'amount' => $paymentAmount,
                 'principal_amount' => $principalAmount,
                 'interest_amount' => $interestAmount,
@@ -797,7 +797,7 @@ class LoansController extends Controller
             // Update loan schedule if applicable
             if ($nextSchedule) {
                 $nextSchedule->paid_amount += $paymentAmount;
-                if ($nextSchedule->paid_amount >= $nextSchedule->amount) {
+                if ($nextSchedule->paid_amount >= $nextSchedule->total_amount) {
                     $nextSchedule->status = 'paid';
                     $nextSchedule->paid_date = now();
                 }
@@ -832,56 +832,46 @@ class LoansController extends Controller
             throw new \Exception('Loan product accounts not configured properly.');
         }
 
-        $transactionId = 'REP-' . date('Ymd') . '-' . str_pad($loan->id, 6, '0', STR_PAD_LEFT);
-        $now = now();
+        $transactionId = 'REP-' . date('YmdHis') . '-' . str_pad($loan->id, 6, '0', STR_PAD_LEFT);
 
-        // Debit: Collection Account (Cash received)
-        \App\Models\GeneralLedger::create([
-            'organization_id' => $organizationId,
-            'branch_id' => $branchId,
-            'account_id' => $collectionAccount->id,
-            'transaction_id' => $transactionId,
-            'transaction_type' => 'debit',
-            'amount' => $totalAmount,
-            'description' => "Loan repayment - {$loan->loan_number}",
-            'transaction_date' => $now,
-            'reference_type' => 'LoanTransaction',
-            'reference_id' => $loan->id,
-            'created_by' => auth()->id(),
-        ]);
+        // Debit: Collection Account (Cash received - Asset increases)
+        \App\Models\GeneralLedger::createTransaction(
+            $transactionId . '-COLLECTION',
+            $collectionAccount,
+            'debit',
+            $totalAmount,
+            "Loan repayment received - {$loan->loan_number}",
+            'LoanTransaction',
+            $loan->id,
+            auth()->id()
+        );
 
-        // Credit: Principal Account (Principal portion)
+        // Credit: Principal Account (Principal portion - Asset decreases)
         if ($principalAmount > 0) {
-            \App\Models\GeneralLedger::create([
-                'organization_id' => $organizationId,
-                'branch_id' => $branchId,
-                'account_id' => $principalAccount->id,
-                'transaction_id' => $transactionId,
-                'transaction_type' => 'credit',
-                'amount' => $principalAmount,
-                'description' => "Principal repayment - {$loan->loan_number}",
-                'transaction_date' => $now,
-                'reference_type' => 'LoanTransaction',
-                'reference_id' => $loan->id,
-                'created_by' => auth()->id(),
-            ]);
+            \App\Models\GeneralLedger::createTransaction(
+                $transactionId . '-PRINCIPAL',
+                $principalAccount,
+                'credit',
+                $principalAmount,
+                "Principal repayment - {$loan->loan_number}",
+                'LoanTransaction',
+                $loan->id,
+                auth()->id()
+            );
         }
 
-        // Credit: Interest Revenue Account (Interest portion)
+        // Credit: Interest Revenue Account (Interest portion - Income increases)
         if ($interestAmount > 0) {
-            \App\Models\GeneralLedger::create([
-                'organization_id' => $organizationId,
-                'branch_id' => $branchId,
-                'account_id' => $interestRevenueAccount->id,
-                'transaction_id' => $transactionId,
-                'transaction_type' => 'credit',
-                'amount' => $interestAmount,
-                'description' => "Interest income - {$loan->loan_number}",
-                'transaction_date' => $now,
-                'reference_type' => 'LoanTransaction',
-                'reference_id' => $loan->id,
-                'created_by' => auth()->id(),
-            ]);
+            \App\Models\GeneralLedger::createTransaction(
+                $transactionId . '-INTEREST',
+                $interestRevenueAccount,
+                'credit',
+                $interestAmount,
+                "Interest income - {$loan->loan_number}",
+                'LoanTransaction',
+                $loan->id,
+                auth()->id()
+            );
         }
     }
 

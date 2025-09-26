@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Loan;
 use App\Models\LoanSchedule;
+use App\Models\LoanTransaction;
 use App\Models\Client;
 use App\Models\ExpenseRequest;
 use App\Models\GeneralLedger;
@@ -1012,7 +1013,10 @@ class ReportsController extends Controller
         $startDate = $request->get('start_date', Carbon::now()->startOfMonth());
         $endDate = $request->get('end_date', Carbon::now()->endOfMonth());
 
-        $query = LoanSchedule::whereHas('loan', function($q) use ($organizationId, $branchId) {
+        // Get collections from both LoanSchedule (paid installments) and LoanTransaction (all repayments)
+        
+        // 1. Get paid loan schedules
+        $paidSchedules = LoanSchedule::whereHas('loan', function($q) use ($organizationId, $branchId) {
             $q->where('organization_id', $organizationId);
             if ($branchId) {
                 $q->where('branch_id', $branchId);
@@ -1020,9 +1024,57 @@ class ReportsController extends Controller
         })
         ->where('status', 'paid')
         ->whereBetween('paid_date', [$startDate, $endDate])
-        ->with(['loan.client', 'loan.loanProduct', 'loan.branch']);
+        ->with(['loan.client', 'loan.loanProduct', 'loan.branch'])
+        ->get();
 
-        $collections = $query->orderBy('paid_date', 'desc')->get();
+        // 2. Get loan transactions (repayments) - this is the main source
+        $repaymentTransactions = LoanTransaction::whereHas('loan', function($q) use ($organizationId, $branchId) {
+            $q->where('organization_id', $organizationId);
+            if ($branchId) {
+                $q->where('branch_id', $branchId);
+            }
+        })
+        ->whereIn('transaction_type', ['principal_payment', 'interest_payment'])
+        ->where('status', 'completed')
+        ->whereBetween('transaction_date', [$startDate, $endDate])
+        ->with(['loan.client', 'loan.loanProduct', 'loan.branch', 'loanSchedule'])
+        ->get();
+
+        // Combine and format collections data
+        $collections = collect();
+        
+        // Add repayment transactions (primary source)
+        foreach ($repaymentTransactions as $transaction) {
+            $collections->push((object) [
+                'id' => 'transaction_' . $transaction->id,
+                'paid_date' => $transaction->transaction_date,
+                'loan' => $transaction->loan,
+                'paid_amount' => $transaction->amount,
+                'installment_number' => $transaction->loanSchedule ? $transaction->loanSchedule->installment_number : 'N/A',
+                'type' => 'repayment',
+                'transaction' => $transaction,
+            ]);
+        }
+        
+        // Add paid schedules (secondary source - for schedules that might not have transactions)
+        foreach ($paidSchedules as $schedule) {
+            // Only add if there's no corresponding transaction
+            $hasTransaction = $repaymentTransactions->where('loan_schedule_id', $schedule->id)->count() > 0;
+            if (!$hasTransaction) {
+                $collections->push((object) [
+                    'id' => 'schedule_' . $schedule->id,
+                    'paid_date' => $schedule->paid_date,
+                    'loan' => $schedule->loan,
+                    'paid_amount' => $schedule->paid_amount,
+                    'installment_number' => $schedule->installment_number,
+                    'type' => 'installment_payment',
+                    'schedule' => $schedule,
+                ]);
+            }
+        }
+
+        // Sort by date descending
+        $collections = $collections->sortByDesc('paid_date');
 
         // Get summary statistics
         $totalCollected = $collections->sum('paid_amount');

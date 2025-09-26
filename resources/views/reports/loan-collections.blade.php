@@ -97,7 +97,7 @@
                                         {{ $collection->installment_number }}/{{ $collection->loan->tenure_months }}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                        TZS {{ number_format($collection->amount_paid, 2) }}
+                                        TZS {{ number_format($collection->paid_amount, 2) }}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                                         {{ $collection->loan->branch->name }}

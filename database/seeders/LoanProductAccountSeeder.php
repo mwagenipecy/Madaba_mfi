@@ -20,27 +20,33 @@ class LoanProductAccountSeeder extends Seeder
             return;
         }
 
-        // Get accounts for the organization
-        $liabilityAccounts = Account::where('organization_id', $organizationId)
+        // Get accounts for the organization using proper account types
+        $customerDepositsAccount = Account::where('organization_id', $organizationId)
             ->whereHas('accountType', function($query) {
-                $query->where('name', 'Liability');
+                $query->where('code', 'CUSTOMER_DEPOSITS');
             })
-            ->get();
+            ->first();
 
-        $assetAccounts = Account::where('organization_id', $organizationId)
+        $cashAccount = Account::where('organization_id', $organizationId)
             ->whereHas('accountType', function($query) {
-                $query->where('name', 'Assets');
+                $query->where('code', 'CASH');
             })
-            ->get();
+            ->first();
 
-        $revenueAccounts = Account::where('organization_id', $organizationId)
+        $interestIncomeAccount = Account::where('organization_id', $organizationId)
             ->whereHas('accountType', function($query) {
-                $query->where('name', 'Revenue');
+                $query->where('code', 'INTEREST_INCOME');
             })
-            ->get();
+            ->first();
 
-        if ($liabilityAccounts->isEmpty() || $assetAccounts->isEmpty() || $revenueAccounts->isEmpty()) {
-            $this->command->error('Required accounts not found. Please run MainAccountsSeeder first.');
+        $loanPortfolioAccount = Account::where('organization_id', $organizationId)
+            ->whereHas('accountType', function($query) {
+                $query->where('code', 'LOAN_PORTFOLIO');
+            })
+            ->first();
+
+        if (!$customerDepositsAccount || !$cashAccount || !$interestIncomeAccount || !$loanPortfolioAccount) {
+            $this->command->error('Required accounts not found. Please run ComprehensiveAccountsSeeder first.');
             return;
         }
 
@@ -48,18 +54,11 @@ class LoanProductAccountSeeder extends Seeder
         $loanProducts = LoanProduct::where('organization_id', $organizationId)->get();
 
         foreach ($loanProducts as $product) {
-            // Assign accounts based on product type
-            $disbursementAccount = $liabilityAccounts->where('name', 'like', '%Customer Deposits%')->first() 
-                ?? $liabilityAccounts->first();
-            
-            $collectionAccount = $assetAccounts->where('name', 'like', '%Cash%')->first() 
-                ?? $assetAccounts->first();
-            
-            $interestRevenueAccount = $revenueAccounts->where('name', 'like', '%Interest%')->first() 
-                ?? $revenueAccounts->first();
-            
-            $principalAccount = $assetAccounts->where('name', 'like', '%Loan Portfolio%')->first() 
-                ?? $assetAccounts->first();
+            // Assign proper accounts
+            $disbursementAccount = $customerDepositsAccount; // Money comes from customer deposits (liability)
+            $collectionAccount = $cashAccount; // Cash received (asset)
+            $interestRevenueAccount = $interestIncomeAccount; // Interest income (revenue)
+            $principalAccount = $loanPortfolioAccount; // Loan portfolio (asset)
 
             $product->update([
                 'disbursement_account_id' => $disbursementAccount->id,

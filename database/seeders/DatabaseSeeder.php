@@ -17,12 +17,13 @@ class DatabaseSeeder extends Seeder
         $this->call([
             OrganizationSeeder::class,
             BranchesSeeder::class,
-            AccountTypesSeeder::class,
-            MainAccountsSeeder::class,
+            ComprehensiveAccountTypesSeeder::class,
+            ComprehensiveAccountsSeeder::class,
             AdminUserSeeder::class,
             TestUsersSeeder::class,
             SystemLogsSeeder::class,
             LoanProductsSeeder::class,
+            LoanProductAccountSeeder::class,
             ClientsSeeder::class,
             LoansSeeder::class,
         ]);

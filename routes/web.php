@@ -199,6 +199,14 @@ Route::middleware([
         Route::post('/expenses/{expenseRequest}/approve', [App\Http\Controllers\ApprovalsController::class, 'approveExpense'])->name('expenses.approve');
         Route::post('/expenses/{expenseRequest}/reject', [App\Http\Controllers\ApprovalsController::class, 'rejectExpense'])->name('expenses.reject');
     });
+
+    // Repayment Management
+    Route::prefix('repayments')->name('repayments.')->group(function () {
+        Route::get('/', [App\Http\Controllers\RepaymentController::class, 'index'])->name('index');
+        Route::get('/search-clients', [App\Http\Controllers\RepaymentController::class, 'searchClients'])->name('search-clients');
+        Route::get('/client/{client}', [App\Http\Controllers\RepaymentController::class, 'getClientDetails'])->name('client-details');
+        Route::post('/process', [App\Http\Controllers\RepaymentController::class, 'processRepayment'])->name('process');
+    });
     
     // Organizations Management
     Route::prefix('organizations')->name('organizations.')->group(function () {

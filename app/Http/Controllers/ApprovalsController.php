@@ -144,21 +144,130 @@ class ApprovalsController extends Controller
     }
 
     /**
-     * Approve a request
+     * Approve a loan request
      */
-    public function approve(Request $request, $approvalId)
+    public function approve(Request $request, $loanId)
     {
-        // Implementation will be added later
-        return redirect()->back()->with('success', 'Request approved successfully.');
+        $request->validate([
+            'approval_notes' => 'nullable|string|max:500',
+            'approved_amount' => 'nullable|numeric|min:0',
+        ]);
+
+        try {
+            $loan = Loan::findOrFail($loanId);
+            
+            // Check if loan can be approved
+            if ($loan->status !== 'pending') {
+                return redirect()->back()->with('error', 'This loan cannot be approved in its current status.');
+            }
+
+            // Update loan with approval details
+            $approvedAmount = $request->approved_amount ?? $loan->loan_amount;
+            
+            $loan->update([
+                'status' => 'approved',
+                'approval_status' => 'approved',
+                'approved_amount' => $approvedAmount,
+                'approval_date' => now(),
+                'approved_by' => auth()->id(),
+                'approval_notes' => $request->approval_notes,
+            ]);
+
+            // Create or update approval record
+            $approval = Approval::where('reference_type', 'App\\Models\\Loan')
+                ->where('reference_id', $loan->id)
+                ->first();
+            
+            if ($approval) {
+                $approval->update([
+                    'status' => 'approved',
+                    'approver_id' => auth()->id(),
+                    'approval_notes' => $request->approval_notes,
+                    'approved_at' => now(),
+                ]);
+            } else {
+                Approval::create([
+                    'approval_number' => Approval::generateApprovalNumber(),
+                    'organization_id' => $loan->organization_id,
+                    'branch_id' => $loan->branch_id,
+                    'type' => 'loan_approval',
+                    'reference_type' => 'App\\Models\\Loan',
+                    'reference_id' => $loan->id,
+                    'requested_by' => $loan->loan_officer_id,
+                    'approver_id' => auth()->id(),
+                    'status' => 'approved',
+                    'description' => "Loan approval for {$loan->loan_number}",
+                    'approval_notes' => $request->approval_notes,
+                    'approved_at' => now(),
+                ]);
+            }
+
+            return redirect()->back()->with('success', 'Loan approved successfully.');
+
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'An error occurred while approving the loan: ' . $e->getMessage());
+        }
     }
 
     /**
-     * Reject a request
+     * Reject a loan request
      */
-    public function reject(Request $request, $approvalId)
+    public function reject(Request $request, $loanId)
     {
-        // Implementation will be added later
-        return redirect()->back()->with('success', 'Request rejected.');
+        $request->validate([
+            'rejection_reason' => 'required|string|max:500',
+        ]);
+
+        try {
+            $loan = Loan::findOrFail($loanId);
+            
+            // Check if loan can be rejected
+            if ($loan->status !== 'pending') {
+                return redirect()->back()->with('error', 'This loan cannot be rejected in its current status.');
+            }
+
+            // Update loan with rejection details
+            $loan->update([
+                'status' => 'rejected',
+                'approval_status' => 'rejected',
+                'rejection_reason' => $request->rejection_reason,
+                'rejected_by' => auth()->id(),
+            ]);
+
+            // Create or update approval record
+            $approval = Approval::where('reference_type', 'App\\Models\\Loan')
+                ->where('reference_id', $loan->id)
+                ->first();
+            
+            if ($approval) {
+                $approval->update([
+                    'status' => 'rejected',
+                    'approver_id' => auth()->id(),
+                    'approval_notes' => $request->rejection_reason,
+                    'approved_at' => now(),
+                ]);
+            } else {
+                Approval::create([
+                    'approval_number' => Approval::generateApprovalNumber(),
+                    'organization_id' => $loan->organization_id,
+                    'branch_id' => $loan->branch_id,
+                    'type' => 'loan_approval',
+                    'reference_type' => 'App\\Models\\Loan',
+                    'reference_id' => $loan->id,
+                    'requested_by' => $loan->loan_officer_id,
+                    'approver_id' => auth()->id(),
+                    'status' => 'rejected',
+                    'description' => "Loan rejection for {$loan->loan_number}",
+                    'approval_notes' => $request->rejection_reason,
+                    'approved_at' => now(),
+                ]);
+            }
+
+            return redirect()->back()->with('success', 'Loan rejected successfully.');
+
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'An error occurred while rejecting the loan: ' . $e->getMessage());
+        }
     }
 
     /**

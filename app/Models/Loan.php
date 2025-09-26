@@ -702,19 +702,8 @@ class Loan extends Model
 
     private function recordGeneralLedgerEntry($type, $amount, $accountId = null): void
     {
-        $loanPortfolioAccount = Account::where('organization_id', $this->organization_id)
-            ->where('name', 'like', '%Loan Portfolio%')
-            ->where('account_type_id', function($query) {
-                $query->select('id')
-                    ->from('account_types')
-                    ->where('name', 'Assets');
-            })
-            ->first();
-
-        if (!$loanPortfolioAccount) {
-            return; // Skip if loan portfolio account doesn't exist
-        }
-
+        $transactionId = 'LOAN-' . $this->loan_number . '-' . strtoupper($type) . '-' . date('YmdHis');
+        
         $description = match($type) {
             'disbursement' => "Loan disbursement for {$this->loan_number}",
             'write_off' => "Loan write-off for {$this->loan_number}",
@@ -722,36 +711,85 @@ class Loan extends Model
             default => "Loan transaction for {$this->loan_number}",
         };
 
-        // Debit Loan Portfolio (Asset)
-        GeneralLedger::create([
-            'transaction_number' => 'GL' . date('Ymd') . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT),
-            'account_id' => $loanPortfolioAccount->id,
-            'organization_id' => $this->organization_id,
-            'branch_id' => $this->branch_id,
-            'transaction_type' => $type === 'write_off' ? 'credit' : 'debit',
-            'amount' => $amount,
-            'description' => $description,
-            'reference_type' => 'App\\Models\\Loan',
-            'reference_id' => $this->id,
-            'transaction_date' => now(),
-            'created_by' => auth()->id(),
-        ]);
-
-        // Credit Source Account (Liability) - for disbursements
         if ($type === 'disbursement' && $accountId) {
-            GeneralLedger::create([
-                'transaction_number' => 'GL' . date('Ymd') . str_pad(rand(1, 9999), 4, '0', STR_PAD_LEFT),
-                'account_id' => $accountId,
-                'organization_id' => $this->organization_id,
-                'branch_id' => $this->branch_id,
-                'transaction_type' => 'credit',
-                'amount' => $amount,
-                'description' => $description,
-                'reference_type' => 'App\\Models\\Loan',
-                'reference_id' => $this->id,
-                'transaction_date' => now(),
-                'created_by' => auth()->id(),
-            ]);
+            // Get loan portfolio account (Asset)
+            $loanPortfolioAccount = Account::where('organization_id', $this->organization_id)
+                ->where('name', 'like', '%Loan Portfolio%')
+                ->whereHas('accountType', function($query) {
+                    $query->where('category', 'asset');
+                })
+                ->first();
+
+            // Get disbursement source account (Liability)
+            $disbursementAccount = Account::find($accountId);
+
+            if ($loanPortfolioAccount && $disbursementAccount) {
+                // Debit: Loan Portfolio (Asset increases)
+                GeneralLedger::createTransaction(
+                    $transactionId . '-DEBIT',
+                    $loanPortfolioAccount,
+                    'debit',
+                    $amount,
+                    $description,
+                    'App\\Models\\Loan',
+                    $this->id,
+                    auth()->id()
+                );
+
+                // Credit: Disbursement Account (Liability decreases - money going out)
+                GeneralLedger::createTransaction(
+                    $transactionId . '-CREDIT',
+                    $disbursementAccount,
+                    'credit',
+                    $amount,
+                    $description,
+                    'App\\Models\\Loan',
+                    $this->id,
+                    auth()->id()
+                );
+            }
+        } elseif ($type === 'write_off') {
+            // Get loan portfolio account (Asset)
+            $loanPortfolioAccount = Account::where('organization_id', $this->organization_id)
+                ->where('name', 'like', '%Loan Portfolio%')
+                ->whereHas('accountType', function($query) {
+                    $query->where('category', 'asset');
+                })
+                ->first();
+
+            // Get expense account for write-offs
+            $expenseAccount = Account::where('organization_id', $this->organization_id)
+                ->whereHas('accountType', function($query) {
+                    $query->where('category', 'expense');
+                })
+                ->where('name', 'like', '%Bad Debt%')
+                ->first();
+
+            if ($loanPortfolioAccount && $expenseAccount) {
+                // Credit: Loan Portfolio (Asset decreases)
+                GeneralLedger::createTransaction(
+                    $transactionId . '-CREDIT',
+                    $loanPortfolioAccount,
+                    'credit',
+                    $amount,
+                    $description,
+                    'App\\Models\\Loan',
+                    $this->id,
+                    auth()->id()
+                );
+
+                // Debit: Bad Debt Expense (Expense increases)
+                GeneralLedger::createTransaction(
+                    $transactionId . '-DEBIT',
+                    $expenseAccount,
+                    'debit',
+                    $amount,
+                    $description,
+                    'App\\Models\\Loan',
+                    $this->id,
+                    auth()->id()
+                );
+            }
         }
     }
 }

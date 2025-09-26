@@ -175,9 +175,22 @@ class GeneralLedger extends Model
         ?int $referenceId = null,
         ?int $approvedBy = null
     ): self {
-        $newBalance = $transactionType === 'debit' 
-            ? $account->balance - $amount 
-            : $account->balance + $amount;
+        // Calculate new balance based on account type and transaction type
+        $accountType = $account->accountType;
+        $currentBalance = $account->balance;
+        
+        // For assets and expenses: debit increases, credit decreases
+        // For liabilities, equity, and income: debit decreases, credit increases
+        if (in_array($accountType->category, ['asset', 'expense'])) {
+            $newBalance = $transactionType === 'debit' 
+                ? $currentBalance + $amount 
+                : $currentBalance - $amount;
+        } else {
+            // For liability, equity, income accounts
+            $newBalance = $transactionType === 'credit' 
+                ? $currentBalance + $amount 
+                : $currentBalance - $amount;
+        }
 
         $ledgerEntry = self::create([
             'organization_id' => $account->organization_id,
@@ -198,7 +211,10 @@ class GeneralLedger extends Model
         ]);
 
         // Update account balance
-        $account->update(['balance' => $newBalance]);
+        $account->update([
+            'balance' => $newBalance,
+            'last_transaction_date' => now()
+        ]);
 
         return $ledgerEntry;
     }

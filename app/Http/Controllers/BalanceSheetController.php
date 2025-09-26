@@ -107,11 +107,19 @@ class BalanceSheetController extends Controller
         $realAccountBalance = $account->realAccounts->sum('last_balance');
 
         // Get general ledger entries up to the as of date
-        $glBalance = GeneralLedger::where('account_id', $account->id)
+        // Use the balance_after from the last transaction entry for accurate balance
+        $lastTransaction = GeneralLedger::where('account_id', $account->id)
             ->where('transaction_date', '<=', $asOfDate)
-            ->sum(\DB::raw('CASE WHEN transaction_type = "debit" THEN amount ELSE -amount END'));
+            ->orderBy('transaction_date', 'desc')
+            ->orderBy('id', 'desc')
+            ->first();
 
-        return $realAccountBalance + $glBalance;
+        if ($lastTransaction) {
+            return $lastTransaction->balance_after;
+        }
+
+        // If no transactions, return the account's current balance
+        return $account->balance;
     }
 
     /**

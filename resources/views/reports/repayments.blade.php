@@ -178,7 +178,7 @@
                                 @forelse($repayments as $repayment)
                                     <tr>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                            {{ $repayment->transaction_date->format('M d, Y') }}
+                                            {{ $repayment->transaction_date?->format('M d, Y') ?? 'N/A' }}
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                             {{ $repayment->transaction_number }}
