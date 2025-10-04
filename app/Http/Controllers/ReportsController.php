@@ -1013,79 +1013,106 @@ class ReportsController extends Controller
         $startDate = $request->get('start_date', Carbon::now()->startOfMonth());
         $endDate = $request->get('end_date', Carbon::now()->endOfMonth());
 
-        // Get collections from both LoanSchedule (paid installments) and LoanTransaction (all repayments)
+        // Optimized approach: Use a single query with proper joins instead of whereHas
+        // This eliminates N+1 queries and improves performance significantly
         
-        // 1. Get paid loan schedules
-        $paidSchedules = LoanSchedule::whereHas('loan', function($q) use ($organizationId, $branchId) {
-            $q->where('organization_id', $organizationId);
-            if ($branchId) {
-                $q->where('branch_id', $branchId);
-            }
-        })
-        ->where('status', 'paid')
-        ->whereBetween('paid_date', [$startDate, $endDate])
-        ->with(['loan.client', 'loan.loanProduct', 'loan.branch'])
-        ->get();
+        // 1. Get loan transactions (primary source) with optimized query
+        $repaymentTransactions = DB::table('loan_transactions as lt')
+            ->join('loans as l', 'lt.loan_id', '=', 'l.id')
+            ->join('clients as c', 'l.client_id', '=', 'c.id')
+            ->join('loan_products as lp', 'l.loan_product_id', '=', 'lp.id')
+            ->leftJoin('branches as b', 'l.branch_id', '=', 'b.id')
+            ->leftJoin('loan_schedules as ls', 'lt.loan_schedule_id', '=', 'ls.id')
+            ->where('lt.organization_id', $organizationId)
+            ->where('lt.transaction_type', 'principal_payment')
+            ->orWhere('lt.transaction_type', 'interest_payment')
+            ->where('lt.status', 'completed')
+            ->whereBetween('lt.transaction_date', [$startDate, $endDate])
+            ->when($branchId, function($query) use ($branchId) {
+                return $query->where('l.branch_id', $branchId);
+            })
+            ->select([
+                'lt.id as transaction_id',
+                'lt.transaction_date as paid_date',
+                'lt.amount as paid_amount',
+                'lt.transaction_type',
+                'lt.loan_schedule_id',
+                'l.id as loan_id',
+                'l.loan_number',
+                'c.first_name',
+                'c.last_name',
+                'c.phone_number',
+                'lp.name as product_name',
+                'b.name as branch_name',
+                'ls.installment_number'
+            ])
+            ->get();
 
-        // 2. Get loan transactions (repayments) - this is the main source
-        $repaymentTransactions = LoanTransaction::whereHas('loan', function($q) use ($organizationId, $branchId) {
-            $q->where('organization_id', $organizationId);
-            if ($branchId) {
-                $q->where('branch_id', $branchId);
-            }
-        })
-        ->whereIn('transaction_type', ['principal_payment', 'interest_payment'])
-        ->where('status', 'completed')
-        ->whereBetween('transaction_date', [$startDate, $endDate])
-        ->with(['loan.client', 'loan.loanProduct', 'loan.branch', 'loanSchedule'])
-        ->get();
+        // 2. Get paid schedules that don't have corresponding transactions (fallback)
+        $paidSchedules = DB::table('loan_schedules as ls')
+            ->join('loans as l', 'ls.loan_id', '=', 'l.id')
+            ->join('clients as c', 'l.client_id', '=', 'c.id')
+            ->join('loan_products as lp', 'l.loan_product_id', '=', 'lp.id')
+            ->leftJoin('branches as b', 'l.branch_id', '=', 'b.id')
+            ->where('l.organization_id', $organizationId)
+            ->where('ls.status', 'paid')
+            ->whereBetween('ls.paid_date', [$startDate, $endDate])
+            ->whereNotExists(function($query) {
+                $query->select(DB::raw(1))
+                    ->from('loan_transactions as lt')
+                    ->whereColumn('lt.loan_schedule_id', 'ls.id')
+                    ->where('lt.status', 'completed');
+            })
+            ->when($branchId, function($query) use ($branchId) {
+                return $query->where('l.branch_id', $branchId);
+            })
+            ->select([
+                DB::raw('NULL as transaction_id'),
+                'ls.paid_date',
+                'ls.paid_amount',
+                DB::raw("'installment_payment' as transaction_type"),
+                'ls.id as loan_schedule_id',
+                'l.id as loan_id',
+                'l.loan_number',
+                'c.first_name',
+                'c.last_name',
+                'c.phone_number',
+                'lp.name as product_name',
+                'b.name as branch_name',
+                'ls.installment_number'
+            ])
+            ->get();
 
-        // Combine and format collections data
-        $collections = collect();
+        // Combine all collections data efficiently
+        $allCollections = $repaymentTransactions->concat($paidSchedules);
         
-        // Add repayment transactions (primary source)
-        foreach ($repaymentTransactions as $transaction) {
-            $collections->push((object) [
-                'id' => 'transaction_' . $transaction->id,
-                'paid_date' => $transaction->transaction_date,
-                'loan' => $transaction->loan,
-                'paid_amount' => $transaction->amount,
-                'installment_number' => $transaction->loanSchedule ? $transaction->loanSchedule->installment_number : 'N/A',
-                'type' => 'repayment',
-                'transaction' => $transaction,
-            ]);
-        }
-        
-        // Add paid schedules (secondary source - for schedules that might not have transactions)
-        foreach ($paidSchedules as $schedule) {
-            // Only add if there's no corresponding transaction
-            $hasTransaction = $repaymentTransactions->where('loan_schedule_id', $schedule->id)->count() > 0;
-            if (!$hasTransaction) {
-                $collections->push((object) [
-                    'id' => 'schedule_' . $schedule->id,
-                    'paid_date' => $schedule->paid_date,
-                    'loan' => $schedule->loan,
-                    'paid_amount' => $schedule->paid_amount,
-                    'installment_number' => $schedule->installment_number,
-                    'type' => 'installment_payment',
-                    'schedule' => $schedule,
-                ]);
-            }
-        }
+        // Convert to proper format and sort by date descending
+        $collections = $allCollections->map(function($item) {
+            return (object) [
+                'id' => $item->transaction_id ? 'transaction_' . $item->transaction_id : 'schedule_' . $item->loan_schedule_id,
+                'paid_date' => $item->paid_date,
+                'paid_amount' => $item->paid_amount,
+                'installment_number' => $item->installment_number,
+                'type' => $item->transaction_type,
+                'loan_id' => $item->loan_id,
+                'loan_number' => $item->loan_number,
+                'client_name' => "{$item->first_name} {$item->last_name}",
+                'client_phone' => $item->phone_number,
+                'product_name' => $item->product_name,
+                'branch_name' => $item->branch_name,
+            ];
+        })->sortByDesc('paid_date');
 
-        // Sort by date descending
-        $collections = $collections->sortByDesc('paid_date');
-
-        // Get summary statistics
+        // Get summary statistics efficiently
         $totalCollected = $collections->sum('paid_amount');
         $collectionCount = $collections->count();
         $averageCollection = $collectionCount > 0 ? $totalCollected / $collectionCount : 0;
 
-        // Get collections by product
-        $collectionsByProduct = $collections->groupBy('loan.loanProduct.name')
+        // Get collections by product efficiently
+        $collectionsByProduct = $collections->groupBy('product_name')
             ->map(function($productCollections) {
                 return [
-                    'product_name' => $productCollections->first()->loan->loanProduct->name ?? 'Unknown',
+                    'product_name' => $productCollections->first()->product_name,
                     'total_amount' => $productCollections->sum('paid_amount'),
                     'collection_count' => $productCollections->count(),
                     'average_amount' => $productCollections->count() > 0 ? $productCollections->sum('paid_amount') / $productCollections->count() : 0,
@@ -1093,13 +1120,13 @@ class ReportsController extends Controller
             })
             ->sortByDesc('total_amount');
 
-        // Get collections by branch (if admin)
+        // Get collections by branch (if admin) efficiently
         $collectionsByBranch = collect();
         if ($user->role === 'admin') {
-            $collectionsByBranch = $collections->groupBy('loan.branch.name')
+            $collectionsByBranch = $collections->groupBy('branch_name')
                 ->map(function($branchCollections) {
                     return [
-                        'branch_name' => $branchCollections->first()->loan->branch->name ?? 'Unknown',
+                        'branch_name' => $branchCollections->first()->branch_name,
                         'total_amount' => $branchCollections->sum('paid_amount'),
                         'collection_count' => $branchCollections->count(),
                         'average_amount' => $branchCollections->count() > 0 ? $branchCollections->sum('paid_amount') / $branchCollections->count() : 0,
@@ -1108,25 +1135,50 @@ class ReportsController extends Controller
                 ->sortByDesc('total_amount');
         }
 
-        // Get daily collections
-        $dailyCollections = [];
+        // Get daily collections efficiently using database aggregation
+        $dailyCollections = DB::table('loan_transactions as lt')
+            ->join('loans as l', 'lt.loan_id', '=', 'l.id')
+            ->where('lt.organization_id', $organizationId)
+            ->whereIn('lt.transaction_type', ['principal_payment', 'interest_payment'])
+            ->where('lt.status', 'completed')
+            ->whereBetween('lt.transaction_date', [$startDate, $endDate])
+            ->when($branchId, function($query) use ($branchId) {
+                return $query->where('l.branch_id', $branchId);
+            })
+            ->selectRaw('DATE(lt.transaction_date) as date, SUM(lt.amount) as amount, COUNT(*) as count')
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get()
+            ->map(function($day) {
+                return [
+                    'date' => $day->date,
+                    'day_name' => Carbon::parse($day->date)->format('l'),
+                    'amount' => $day->amount,
+                    'count' => $day->count,
+                ];
+            })
+            ->toArray();
+
+        // Fill missing days with zero values
+        $dailyCollectionsMap = collect($dailyCollections)->keyBy('date');
+        $filledDailyCollections = [];
         for ($date = $startDate->copy(); $date->lte($endDate); $date->addDay()) {
-            $dayCollections = $collections->where('paid_date', $date->format('Y-m-d'));
-            $dailyCollections[] = [
-                'date' => $date->format('Y-m-d'),
+            $dateStr = $date->format('Y-m-d');
+            $filledDailyCollections[] = $dailyCollectionsMap->get($dateStr, [
+                'date' => $dateStr,
                 'day_name' => $date->format('l'),
-                'amount' => $dayCollections->sum('paid_amount'),
-                'count' => $dayCollections->count(),
-            ];
+                'amount' => 0,
+                'count' => 0,
+            ]);
         }
 
-        // Get top clients by collection amount
-        $topClients = $collections->groupBy('loan.client_id')
+        // Get top clients by collection amount efficiently
+        $topClients = $collections->groupBy('loan_id')
             ->map(function($clientCollections) {
-                $client = $clientCollections->first()->loan->client;
+                $first = $clientCollections->first();
                 return [
-                    'client_name' => "{$client->first_name} {$client->last_name}",
-                    'client_phone' => $client->phone_number ?? 'N/A',
+                    'client_name' => $first->client_name,
+                    'client_phone' => $first->client_phone,
                     'total_amount' => $clientCollections->sum('paid_amount'),
                     'collection_count' => $clientCollections->count(),
                     'average_amount' => $clientCollections->count() > 0 ? $clientCollections->sum('paid_amount') / $clientCollections->count() : 0,
@@ -1154,7 +1206,7 @@ class ReportsController extends Controller
             'averageCollection',
             'collectionsByProduct',
             'collectionsByBranch',
-            'dailyCollections',
+            'filledDailyCollections',
             'topClients',
             'collectionEfficiency',
             'totalDisbursed'

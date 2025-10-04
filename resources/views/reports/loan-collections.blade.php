@@ -44,7 +44,7 @@
                         </div>
                     </div>
                     <p class="text-sm text-gray-600 mt-2">
-                        {{ $collections->count() }} payments collected between {{ $startDate->format('M d, Y') }} and {{ $endDate->format('M d, Y') }}
+                        {{ $collectionCount }} payments collected between {{ $startDate->format('M d, Y') }} and {{ $endDate->format('M d, Y') }}
                     </p>
                 </div>
             </div>

@@ -177,7 +177,7 @@ class GeneralLedger extends Model
     ): self {
         // Calculate new balance based on account type and transaction type
         $accountType = $account->accountType;
-        $currentBalance = $account->balance;
+        $currentBalance = $account->current_balance ?? $account->balance;
         
         // For assets and expenses: debit increases, credit decreases
         // For liabilities, equity, and income: debit decreases, credit increases
@@ -200,7 +200,7 @@ class GeneralLedger extends Model
             'account_id' => $account->id,
             'transaction_type' => $transactionType,
             'amount' => $amount,
-            'currency' => $account->currency,
+            'currency' => $account->currency ?? 'TZS',
             'description' => $description,
             'reference_type' => $referenceType,
             'reference_id' => $referenceId,
@@ -212,7 +212,7 @@ class GeneralLedger extends Model
 
         // Update account balance
         $account->update([
-            'balance' => $newBalance,
+            'current_balance' => $newBalance,
             'last_transaction_date' => now()
         ]);
 

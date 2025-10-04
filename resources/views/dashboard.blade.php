@@ -127,74 +127,375 @@
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
+    <!-- Force chart text visibility -->
+    <style>
+        #monthlyPerformanceChart, #loanStatusChart {
+            color: #000000 !important;
+        }
+        
+        .chart-container {
+            background: white !important;
+            color: #000000 !important;
+        }
+        
+        .chart-container * {
+            color: #000000 !important;
+        }
+    </style>
+    
     <script>
-        // Monthly Performance Chart
-        const monthlyCtx = document.getElementById('monthlyPerformanceChart').getContext('2d');
-        new Chart(monthlyCtx, {
-            type: 'line',
-            data: {
-                labels: @json($monthlyData['months']),
-                datasets: [{
-                    label: 'Disbursements',
-                    data: @json($monthlyData['disbursements']),
-                    borderColor: 'rgb(34, 197, 94)',
-                    backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                    tension: 0.4
-                }, {
-                    label: 'Collections',
-                    data: @json($monthlyData['collections']),
-                    borderColor: 'rgb(59, 130, 246)',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            callback: function(value) {
-                                return '₵' + value.toLocaleString();
+        // Theme detection function
+        function isDarkMode() {
+            // Check for dark class on html element first
+            if (document.documentElement.classList.contains('dark')) {
+                return true;
+            }
+            // Check for dark class on body element
+            if (document.body.classList.contains('dark')) {
+                return true;
+            }
+            // Check for data-theme attribute
+            if (document.documentElement.getAttribute('data-theme') === 'dark') {
+                return true;
+            }
+            // Fallback to system preference
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                return true;
+            }
+            // Default to light mode if no dark indicators found
+            return false;
+        }
+
+        // Manual override for testing - set to true to force light mode colors
+        const FORCE_LIGHT_MODE = true; // Temporarily set to true to test light mode visibility
+        
+        // Get theme-aware colors
+        function getThemeColors() {
+            const isDark = isDarkMode() && !FORCE_LIGHT_MODE;
+            
+            // Force visible colors for light mode if theme detection might be failing
+            const lightModeColors = {
+                text: '#000000',           // Pure black for maximum contrast
+                textSecondary: '#000000',  // Pure black for maximum contrast  
+                textMuted: '#000000',      // Pure black for maximum contrast
+                axisLabels: '#000000',     // Pure black for maximum contrast
+            };
+            
+            const darkModeColors = {
+                text: 'rgba(255, 255, 255, 0.9)',
+                textSecondary: 'rgba(255, 255, 255, 0.8)',
+                textMuted: 'rgba(255, 255, 255, 0.7)',
+                axisLabels: 'rgba(255, 255, 255, 0.8)',
+            };
+            
+            const baseColors = isDark ? darkModeColors : lightModeColors;
+            
+            return {
+                // Text colors - ensuring proper contrast
+                text: baseColors.text,
+                textSecondary: baseColors.textSecondary,
+                textMuted: baseColors.textMuted,
+                axisLabels: baseColors.axisLabels,
+                
+                // Grid colors
+                gridColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+                borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)',
+                
+                // Chart colors (maintaining brand colors but with theme-aware backgrounds)
+                disbursements: {
+                    border: 'rgb(34, 197, 94)',      // Green
+                    background: isDark ? 'rgba(34, 197, 94, 0.2)' : 'rgba(34, 197, 94, 0.1)'
+                },
+                collections: {
+                    border: 'rgb(59, 130, 246)',     // Blue
+                    background: isDark ? 'rgba(59, 130, 246, 0.2)' : 'rgba(59, 130, 246, 0.1)'
+                },
+                
+                // Status colors (maintaining semantic meaning)
+                statusColors: [
+                    'rgb(34, 197, 94)',   // Green for active
+                    'rgb(239, 68, 68)',   // Red for overdue
+                    'rgb(59, 130, 246)',  // Blue for pending
+                    'rgb(245, 158, 11)',  // Yellow for completed
+                    'rgb(139, 92, 246)'   // Purple for defaulted
+                ]
+            };
+        }
+
+        // Initialize charts with theme-aware configuration
+        function initializeCharts() {
+            const colors = getThemeColors();
+            
+            // Monthly Performance Chart
+            const monthlyCtx = document.getElementById('monthlyPerformanceChart').getContext('2d');
+            new Chart(monthlyCtx, {
+                type: 'line',
+                data: {
+                    labels: @json($monthlyData['months']),
+                    datasets: [{
+                        label: 'Disbursements',
+                        data: @json($monthlyData['disbursements']),
+                        borderColor: colors.disbursements.border,
+                        backgroundColor: colors.disbursements.background,
+                        tension: 0.4,
+                        fill: true
+                    }, {
+                        label: 'Collections',
+                        data: @json($monthlyData['collections']),
+                        borderColor: colors.collections.border,
+                        backgroundColor: colors.collections.background,
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    layout: {
+                        padding: {
+                            top: 10,
+                            bottom: 20,
+                            left: 10,
+                            right: 10
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Month',
+                                color: '#000000', // Force black color
+                                font: {
+                                    size: 14,
+                                    weight: 'bold',
+                                    family: 'Arial, sans-serif'
+                                },
+                                padding: 20
+                            },
+                            grid: {
+                                color: '#e5e7eb',
+                                drawBorder: true,
+                                borderColor: '#d1d5db'
+                            },
+                            ticks: {
+                                color: '#000000', // Force black color
+                                padding: 10,
+                                font: {
+                                    size: 13,
+                                    weight: 'bold',
+                                    family: 'Arial, sans-serif'
+                                }
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Amount (₵)',
+                                color: '#000000', // Force black color
+                                font: {
+                                    size: 14,
+                                    weight: 'bold',
+                                    family: 'Arial, sans-serif'
+                                },
+                                padding: 20
+                            },
+                            beginAtZero: true,
+                            grid: {
+                                color: '#e5e7eb',
+                                drawBorder: true,
+                                borderColor: '#d1d5db'
+                            },
+                            ticks: {
+                                color: '#000000', // Force black color
+                                padding: 10,
+                                font: {
+                                    size: 13,
+                                    weight: 'bold',
+                                    family: 'Arial, sans-serif'
+                                },
+                                callback: function(value) {
+                                    return '₵' + value.toLocaleString();
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Monthly Performance Trends',
+                            color: '#000000', // Force black color
+                            font: {
+                                size: 16,
+                                weight: 'bold',
+                                family: 'Arial, sans-serif'
+                            },
+                            padding: 25
+                        },
+                        legend: {
+                            position: 'top',
+                            align: 'start',
+                            labels: {
+                                color: '#000000', // Force black color
+                                usePointStyle: true,
+                                padding: 20,
+                                boxWidth: 10,
+                                boxHeight: 10,
+                                font: {
+                                    size: 14,
+                                    weight: 'bold',
+                                    family: 'Arial, sans-serif'
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: isDarkMode() ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.9)',
+                            titleColor: colors.text,
+                            bodyColor: colors.text,
+                            borderColor: colors.borderColor,
+                            borderWidth: 1,
+                            cornerRadius: 8
+                        }
+                    }
+                }
+            });
+
+            // Loan Status Distribution Chart
+            const statusCtx = document.getElementById('loanStatusChart').getContext('2d');
+            new Chart(statusCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: @json($loanStatusDistribution->pluck('status')),
+                    datasets: [{
+                        data: @json($loanStatusDistribution->pluck('count')),
+                        backgroundColor: colors.statusColors,
+                        borderColor: isDarkMode() ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.8)',
+                        borderWidth: 2,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '50%',
+                    layout: {
+                        padding: {
+                            top: 10,
+                            bottom: 40,
+                            left: 10,
+                            right: 10
+                        }
+                    },
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Loan Distribution by Status',
+                            color: '#000000', // Force black color
+                            font: {
+                                size: 16,
+                                weight: 'bold',
+                                family: 'Arial, sans-serif'
+                            },
+                            padding: 25
+                        },
+                        legend: {
+                            position: 'bottom',
+                            align: 'center',
+                            labels: {
+                                color: '#000000', // Force black color
+                                usePointStyle: true,
+                                padding: 25,
+                                boxWidth: 12,
+                                boxHeight: 12,
+                                font: {
+                                    size: 14,
+                                    weight: 'bold',
+                                    family: 'Arial, sans-serif'
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: isDarkMode() ? 'rgba(0, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.9)',
+                            titleColor: colors.text,
+                            bodyColor: colors.text,
+                            borderColor: colors.borderColor,
+                            borderWidth: 1,
+                            cornerRadius: 8,
+                            callbacks: {
+                                label: function(context) {
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = ((context.parsed / total) * 100).toFixed(1);
+                                    return context.label + ': ' + context.parsed + ' (' + percentage + '%)';
+                                }
                             }
                         }
                     }
-                },
-                plugins: {
-                    legend: {
-                        position: 'top',
-                    }
                 }
-            }
+            });
+        }
+
+        // Debug function to check theme detection
+        function debugTheme() {
+            const isDark = isDarkMode();
+            const colors = getThemeColors();
+            console.log('Theme Debug:', {
+                isDarkMode: isDark,
+                textColor: colors.text,
+                textSecondary: colors.textSecondary,
+                textMuted: colors.textMuted,
+                axisLabels: colors.axisLabels,
+                htmlClasses: document.documentElement.className,
+                bodyClasses: document.body.className,
+                FORCE_LIGHT_MODE: FORCE_LIGHT_MODE
+            });
+            
+            // Test if canvas elements exist
+            const monthlyCanvas = document.getElementById('monthlyPerformanceChart');
+            const statusCanvas = document.getElementById('loanStatusChart');
+            console.log('Canvas elements:', {
+                monthlyCanvas: monthlyCanvas ? 'Found' : 'Not found',
+                statusCanvas: statusCanvas ? 'Found' : 'Not found'
+            });
+        }
+
+        // Initialize charts when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            debugTheme(); // Debug theme detection
+            initializeCharts();
         });
 
-        // Loan Status Distribution Chart
-        const statusCtx = document.getElementById('loanStatusChart').getContext('2d');
-        new Chart(statusCtx, {
-            type: 'doughnut',
-            data: {
-                labels: @json($loanStatusDistribution->pluck('status')),
-                datasets: [{
-                    data: @json($loanStatusDistribution->pluck('count')),
-                    backgroundColor: [
-                        'rgb(34, 197, 94)',   // Green for active
-                        'rgb(239, 68, 68)',   // Red for overdue
-                        'rgb(59, 130, 246)',  // Blue for pending
-                        'rgb(245, 158, 11)',  // Yellow for completed
-                        'rgb(139, 92, 246)'   // Purple for defaulted
-                    ]
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                    }
+        // Re-initialize charts when theme changes (if theme switching is implemented)
+        // This can be called when the theme toggle is used
+        function reinitializeCharts() {
+            // Destroy existing charts
+            Chart.helpers.each(Chart.instances, function(chart) {
+                chart.destroy();
+            });
+            // Re-initialize with new theme
+            initializeCharts();
+        }
+
+        // Listen for theme changes (if implemented)
+        const observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                    reinitializeCharts();
                 }
-            }
+            });
+        });
+
+        // Start observing
+        observer.observe(document.documentElement, {
+            attributes: true,
+            attributeFilter: ['class']
+        });
+
+        // Also listen for system theme changes
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+            reinitializeCharts();
         });
     </script>
 </x-app-shell>
