@@ -4,6 +4,7 @@ namespace App\Livewire;
 
 use Livewire\Component;
 use App\Models\Branch;
+use App\Models\SystemLog;
 
 class BranchesList extends Component
 {
@@ -22,7 +23,16 @@ class BranchesList extends Component
         $branch = Branch::find($branchId);
         if ($branch) {
             $branch->update(['status' => 'active']);
-            session()->flash('message', 'Branch enabled successfully.');
+            
+            SystemLog::log(
+                'branch_enabled',
+                "Branch enabled: {$branch->name} ({$branch->code})",
+                'info',
+                $branch,
+                auth()->id()
+            );
+            
+            session()->flash('success', 'Branch enabled successfully.');
         }
     }
 
@@ -31,7 +41,16 @@ class BranchesList extends Component
         $branch = Branch::find($branchId);
         if ($branch) {
             $branch->update(['status' => 'inactive']);
-            session()->flash('message', 'Branch disabled successfully.');
+            
+            SystemLog::log(
+                'branch_disabled',
+                "Branch disabled: {$branch->name} ({$branch->code})",
+                'warning',
+                $branch,
+                auth()->id()
+            );
+            
+            session()->flash('success', 'Branch disabled successfully.');
         }
     }
 }

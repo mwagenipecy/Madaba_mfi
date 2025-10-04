@@ -139,6 +139,9 @@ class BranchController extends Controller
      */
     public function users(Branch $branch)
     {
+        // Load users relationship
+        $branch->load('users');
+        
         return view('branches.users', compact('branch'));
     }
 
@@ -150,5 +153,71 @@ class BranchController extends Controller
         return view('branches.create-user', compact('branch'));
     }
 
-    
+    /**
+     * Store a new branch user
+     */
+    public function storeUser(Request $request, Branch $branch)
+    {
+        $validated = $request->validate([
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email',
+            'phone' => 'nullable|string|max:20',
+            'role' => 'required|in:super_admin,admin,manager,loan_officer,accountant,cashier,field_agent',
+            'password' => 'required|string|min:8|confirmed',
+        ]);
+
+        $user = User::create([
+            'first_name' => $validated['first_name'],
+            'last_name' => $validated['last_name'],
+            'email' => $validated['email'],
+            'phone' => $validated['phone'],
+            'role' => $validated['role'],
+            'password' => bcrypt($validated['password']),
+            'organization_id' => $branch->organization_id,
+            'branch_id' => $branch->id,
+            'email_verified_at' => now(),
+        ]);
+
+        SystemLog::log(
+            'branch_user_created',
+            "User created for branch: {$user->first_name} {$user->last_name} ({$user->email}) in {$branch->name}",
+            'info',
+            $user,
+            auth()->id()
+        );
+
+        return redirect()->route('branches.users', $branch)
+            ->with('success', 'User created successfully.');
+    }
+
+    /**
+     * Change user status
+     */
+    public function changeUserStatus(Request $request, Branch $branch, User $user)
+    {
+        $validated = $request->validate([
+            'status' => 'required|in:active,inactive,suspended',
+        ]);
+
+        if ($user->branch_id === $branch->id) {
+            $oldStatus = $user->status;
+            $user->update(['status' => $validated['status']]);
+            
+            SystemLog::log(
+                'branch_user_status_changed',
+                "User status changed: {$user->full_name} ({$user->email}) from {$oldStatus} to {$validated['status']} in {$branch->name}",
+                'warning',
+                $user,
+                auth()->id()
+            );
+            
+            return redirect()->route('branches.users', $branch)
+                ->with('success', 'User status updated successfully.');
+        }
+        
+        return redirect()->route('branches.users', $branch)
+            ->with('error', 'User is not assigned to this branch.');
+    }
 }
+

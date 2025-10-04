@@ -50,6 +50,13 @@ class PaymentController extends Controller
             ->with(['accountType', 'branch'])
             ->get();
 
+        // Calculate accurate balances using AccountingService
+        $accountingService = app(\App\Services\AccountingService::class);
+        $accounts = $accounts->map(function($account) use ($accountingService) {
+            $account->calculated_balance = $accountingService->calculateAccountBalance($account);
+            return $account;
+        });
+
         return view('payments.create-fund-transfer', compact('accounts'));
     }
 
@@ -63,11 +70,51 @@ class PaymentController extends Controller
             'to_account_id' => 'required|exists:accounts,id|different:from_account_id',
             'amount' => 'required|numeric|min:0.01',
             'description' => 'required|string|max:500',
+        ], [
+            'from_account_id.required' => 'Source account is required.',
+            'from_account_id.exists' => 'Selected source account does not exist.',
+            'to_account_id.required' => 'Destination account is required.',
+            'to_account_id.exists' => 'Selected destination account does not exist.',
+            'to_account_id.different' => 'Cannot transfer funds to the same account.',
+            'amount.required' => 'Transfer amount is required.',
+            'amount.numeric' => 'Transfer amount must be a valid number.',
+            'amount.min' => 'Transfer amount must be greater than 0.',
+            'description.required' => 'Transfer description is required.',
+            'description.max' => 'Description cannot exceed 500 characters.',
         ]);
 
         try {
             $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
             
+            // Validate accounts belong to the same organization
+            $fromAccount = Account::where('id', $request->from_account_id)
+                ->where('organization_id', $organizationId)
+                ->where('status', 'active')
+                ->first();
+            
+            $toAccount = Account::where('id', $request->to_account_id)
+                ->where('organization_id', $organizationId)
+                ->where('status', 'active')
+                ->first();
+
+            if (!$fromAccount) {
+                return redirect()->back()->with('error', 'Source account not found or inactive.');
+            }
+
+            if (!$toAccount) {
+                return redirect()->back()->with('error', 'Destination account not found or inactive.');
+            }
+
+            // Check if source account has sufficient balance using AccountingService
+            $accountingService = app(\App\Services\AccountingService::class);
+            $currentBalance = $accountingService->calculateAccountBalance($fromAccount);
+            
+            if ($currentBalance < $request->amount) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Insufficient balance in source account. Available balance: TZS ' . number_format($currentBalance, 2));
+            }
+
             // Generate transfer number
             $transferNumber = 'FT-' . date('Ymd') . '-' . str_pad(FundTransfer::count() + 1, 4, '0', STR_PAD_LEFT);
 

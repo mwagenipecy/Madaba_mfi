@@ -4,14 +4,39 @@
         <div class="bg-white rounded-lg shadow-sm p-6">
             <div class="flex items-center justify-between">
                 <div>
-                    <h1 class="text-2xl font-bold text-gray-900">Main Account Categories</h1>
-                    <p class="text-gray-600 mt-1">The 5 main account categories: Assets, Revenue, Liability, Equity, and Expense</p>
+                    <h1 class="text-2xl font-bold text-gray-900">HQ Main Account Categories</h1>
+                    <p class="text-gray-600 mt-1">
+                        The 5 main account categories attached to 
+                        @if($hqBranch)
+                            <span class="font-semibold text-blue-600">{{ $hqBranch->name }}</span>
+                        @else
+                            HQ Branch
+                        @endif
+                        : Assets, Revenue, Liability, Equity, and Expense
+                    </p>
                 </div>
                 <a href="{{ route('accounts.create') }}" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
                     Create Sub-Account
                 </a>
             </div>
         </div>
+
+        @if($hqBranch)
+            <!-- HQ Branch Info Card -->
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div class="flex items-center">
+                    <div class="p-2 bg-blue-100 rounded-lg">
+                        <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <h3 class="text-sm font-medium text-blue-900">HQ Branch: {{ $hqBranch->name }}</h3>
+                        <p class="text-sm text-blue-700">These are the organization's main financial account categories</p>
+                    </div>
+                </div>
+            </div>
+        @endif
 
         <!-- Account Categories Grid -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -52,7 +77,18 @@
                 </div>
             @empty
                 <div class="col-span-3">
-                    <div class="p-6 text-center text-gray-500 border rounded-lg">No main categories found.</div>
+                    <div class="text-center py-8">
+                        <div class="text-gray-400 mb-4">
+                            <svg class="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                        </div>
+                        <h3 class="text-lg font-medium text-gray-900 mb-1">No HQ Main Accounts Found</h3>
+                        <p class="text-gray-500 mb-4">The 5 main account categories (Assets, Revenue, Liability, Equity, Expense) should be automatically created when an organization is set up.</p>
+                        @if($hqBranch)
+                            <p class="text-sm text-gray-500">Expected for HQ Branch: <span class="font-semibold">{{ $hqBranch->name }}</span></p>
+                        @endif
+                    </div>
                 </div>
             @endforelse
         </div>

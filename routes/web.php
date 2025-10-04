@@ -72,6 +72,8 @@ Route::middleware([
         Route::delete('/{branch}', [App\Http\Controllers\BranchController::class, 'disable'])->name('disable');
         Route::get('/{branch}/users', [App\Http\Controllers\BranchController::class, 'users'])->name('users');
         Route::get('/{branch}/users/create', [App\Http\Controllers\BranchController::class, 'createUser'])->name('users.create');
+        Route::post('/{branch}/users', [App\Http\Controllers\BranchController::class, 'storeUser'])->name('users.store');
+        Route::post('/{branch}/users/{user}/status', [App\Http\Controllers\BranchController::class, 'changeUserStatus'])->name('users.status');
     });
     
     // Payments Management
@@ -98,6 +100,10 @@ Route::middleware([
         
         // Real Account Mapping - Must be before {account} routes
         Route::get('/mapped', [App\Http\Controllers\AccountsController::class, 'mappedAccounts'])->name('mapped');
+        
+        // Account enable/disable actions
+        Route::post('/{account}/enable', [App\Http\Controllers\AccountsController::class, 'enable'])->name('enable');
+        Route::post('/{account}/status-change', [App\Http\Controllers\AccountsController::class, 'disable'])->name('status-change');
         
         Route::get('/{account}', [App\Http\Controllers\AccountsController::class, 'show'])->name('show');
         Route::get('/{account}/edit', [App\Http\Controllers\AccountsController::class, 'edit'])->name('edit');

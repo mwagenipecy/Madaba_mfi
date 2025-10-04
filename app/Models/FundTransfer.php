@@ -183,32 +183,9 @@ class FundTransfer extends Model
             return false;
         }
 
-        // Create ledger entries for the transfer
-        $transactionId = 'FT-' . $this->transfer_number;
-
-        // Debit from source account
-        GeneralLedger::createTransaction(
-            $transactionId . '-DEBIT',
-            $this->fromAccount,
-            'debit',
-            $this->amount,
-            "Fund transfer to {$this->toAccount->name}",
-            'FundTransfer',
-            $this->id,
-            $this->approved_by
-        );
-
-        // Credit to destination account
-        GeneralLedger::createTransaction(
-            $transactionId . '-CREDIT',
-            $this->toAccount,
-            'credit',
-            $this->amount,
-            "Fund transfer from {$this->fromAccount->name}",
-            'FundTransfer',
-            $this->id,
-            $this->approved_by
-        );
+        // Use the AccountingService to create proper accounting entries
+        $accountingService = app(\App\Services\AccountingService::class);
+        $accountingService->recordFundTransfer($this);
 
         $this->update([
             'status' => 'completed',

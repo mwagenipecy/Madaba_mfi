@@ -24,7 +24,15 @@ class AccountsController extends Controller
         $mainAccounts = Account::where('organization_id', $organizationId)->whereNull('branch_id')->count();
         $branchAccounts = Account::where('organization_id', $organizationId)->whereNotNull('branch_id')->count();
         
-        return view('accounts.index', compact('totalAccounts', 'activeAccounts', 'mainAccounts', 'branchAccounts'));
+        // Get latest transactions from general ledger
+        $latestTransactions = \App\Models\GeneralLedger::where('organization_id', $organizationId)
+            ->with(['account.accountType', 'branch'])
+            ->orderBy('transaction_date', 'desc')
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get();
+        
+        return view('accounts.index', compact('totalAccounts', 'activeAccounts', 'mainAccounts', 'branchAccounts', 'latestTransactions'));
     }
 
     /**
@@ -34,28 +42,111 @@ class AccountsController extends Controller
     {
         $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
 
-        // Fetch main category accounts (no parent) scoped to organization and without branch
-        $categories = Account::withCount(['childAccounts as sub_accounts_count' => function($q) use ($organizationId) {
-                $q->where('organization_id', $organizationId);
-            }])
-            ->withSum(['childAccounts as total_balance' => function($q) use ($organizationId) {
-                $q->where('organization_id', $organizationId);
-            }], 'balance')
-            ->whereNull('parent_account_id')
-            ->whereNull('branch_id')
-            ->where('organization_id', $organizationId)
-            ->with('accountType')
+        // Get the HQ branch for this organization
+        $hqBranch = \App\Models\Branch::where('organization_id', $organizationId)
+            ->where('is_hq', true)
+            ->first();
+
+        if (!$hqBranch) {
+            // Fallback: get the main branch (first branch)
+            $hqBranch = \App\Models\Branch::where('organization_id', $organizationId)->first();
+        }
+
+        // Get the 5 main account types
+        $accountTypes = \App\Models\AccountType::whereIn('name', ['Assets', 'Revenue', 'Liability', 'Equity', 'Expense'])
+            ->orderBy('name')
             ->get();
 
-        return view('accounts.main-accounts', compact('categories'));
+        // Fetch one main account per AccountType (avoid duplicates)
+        $categories = collect();
+        
+        foreach ($accountTypes as $accountType) {
+            $account = Account::where('organization_id', $organizationId)
+                ->where('account_type_id', $accountType->id)
+                ->where(function($query) use ($hqBranch) {
+                    // First try HQ branch accounts (if exists and branch_id matches)
+                    if ($hqBranch) {
+                        $query->where(function($subQuery) use ($hqBranch) {
+                            $subQuery->where('branch_id', $hqBranch->id)
+                                    ->where(function($metaQuery) {
+                                        $metaQuery->whereJsonContains('metadata->is_hq_account', true)
+                                                ->orWhereJsonContains('metadata->account_type', 'main_category');
+                                    });
+                        });
+                    }
+                    
+                    // Fallback to organization-level main accounts
+                    $query->orWhere(function($subQuery) {
+                        $subQuery->where('branch_id', null)
+                                 ->whereJsonContains('metadata->account_type', 'main_category');
+                    });
+                })
+                ->withCount(['childAccounts as sub_accounts_count' => function($q) use ($organizationId) {
+                    $q->where('organization_id', $organizationId);
+                }])
+                ->withSum(['childAccounts as total_balance' => function($q) use ($organizationId) {
+                    $q->where('organization_id', $organizationId);
+                }], 'balance')
+                ->with('accountType')
+                ->first();
+                
+            if ($account) {
+                $categories->push($account);
+            }
+        }
+
+        return view('accounts.main-accounts', compact('categories', 'hqBranch'));
     }
 
     /**
-     * Show branch accounts
+     * Show all accounts with branch filtering
      */
-    public function branchAccounts()
+    public function branchAccounts(Request $request)
     {
-        return view('accounts.branch-accounts');
+        $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
+        
+        // Get all branches for this organization
+        $branches = Branch::where('organization_id', $organizationId)->orderBy('name')->get();
+        
+        // Get all accounts for this organization with relationships
+        $query = Account::where('organization_id', $organizationId)
+            ->with(['accountType', 'branch'])
+            ->orderBy('created_at', 'desc');
+        
+        // Apply branch filter if provided
+        $selectedBranchId = $request->get('branch_id');
+        if ($selectedBranchId) {
+            if ($selectedBranchId === 'main') {
+                // Show organization-level accounts (no specific branch)
+                $query->whereNull('branch_id');
+            } else {
+                // Show accounts for specific branch
+                $query->where('branch_id', $selectedBranchId);
+            }
+        }
+        
+        $accounts = $query->get();
+        
+        // Calculate statistics
+        $totalAccounts = $accounts->count();
+        $totalBalance = $accounts->sum('balance');
+        
+        // Get account type statistics
+        $accountTypeStats = $accounts->groupBy('accountType.name')->map(function ($group) {
+            return [
+                'count' => $group->count(),
+                'balance' => $group->sum('balance')
+            ];
+        });
+        
+        return view('accounts.branch-accounts', compact(
+            'accounts', 
+            'branches', 
+            'selectedBranchId', 
+            'totalAccounts', 
+            'totalBalance', 
+            'accountTypeStats'
+        ));
     }
 
     /**
@@ -63,7 +154,34 @@ class AccountsController extends Controller
      */
     public function realAccounts()
     {
-        return view('accounts.real-accounts');
+        $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
+        
+        // Get all real accounts that have mappings to accounts in this organization
+        $realAccounts = \App\Models\RealAccount::whereHas('mappedAccounts', function($query) use ($organizationId) {
+            $query->where('organization_id', $organizationId);
+        })
+        ->with(['mappedAccounts.accountType', 'mappedAccounts.branch'])
+        ->orderBy('created_at', 'desc')
+        ->get();
+        
+        // Calculate statistics
+        $totalRealAccounts = $realAccounts->count();
+        $totalBalance = $realAccounts->sum('last_balance');
+        
+        // Get provider type statistics
+        $providerStats = $realAccounts->groupBy('provider_type')->map(function ($group) {
+            return [
+                'count' => $group->count(),
+                'balance' => $group->sum('last_balance')
+            ];
+        });
+        
+        return view('accounts.real-accounts', compact(
+            'realAccounts', 
+            'totalRealAccounts', 
+            'totalBalance', 
+            'providerStats'
+        ));
     }
 
     /**
@@ -72,15 +190,56 @@ class AccountsController extends Controller
     public function create()
     {
         $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
-        $accountTypes = AccountType::all();
         $organizations = Organization::where('id', $organizationId)->get();
         $branches = Branch::where('organization_id', $organizationId)->get();
-        $parentAccounts = Account::where('organization_id', $organizationId)
-            ->whereNull('branch_id')
-            ->whereNull('parent_account_id')
+        
+        // Get the 5 main accounts as parent account options (same logic as mainAccounts page)
+        $accountTypes = \App\Models\AccountType::whereIn('name', ['Assets', 'Revenue', 'Liability', 'Equity', 'Expense'])
+            ->orderBy('name')
             ->get();
 
-        return view('accounts.create', compact('accountTypes', 'organizations', 'branches', 'parentAccounts', 'organizationId'));
+        // Get the HQ branch for this organization (same logic as mainAccounts page)
+        $hqBranch = \App\Models\Branch::where('organization_id', $organizationId)
+            ->where('is_hq', true)
+            ->first();
+
+        if (!$hqBranch) {
+            // Fallback: get the main branch (first branch)
+            $hqBranch = \App\Models\Branch::where('organization_id', $organizationId)->first();
+        }
+
+        // Fetch one main account per AccountType (same logic as mainAccounts page)
+        $parentAccounts = collect();
+        
+        foreach ($accountTypes as $accountType) {
+            $account = Account::where('organization_id', $organizationId)
+                ->where('account_type_id', $accountType->id)
+                ->where(function($query) use ($hqBranch) {
+                    // First try HQ branch accounts (if exists and branch_id matches)
+                    if ($hqBranch) {
+                        $query->where(function($subQuery) use ($hqBranch) {
+                            $subQuery->where('branch_id', $hqBranch->id)
+                                    ->where(function($metaQuery) {
+                                        $metaQuery->whereJsonContains('metadata->is_hq_account', true)
+                                                ->orWhereJsonContains('metadata->account_type', 'main_category');
+                                    });
+                        });
+                    }
+                    
+                    // Fallback to organization-level main accounts
+                    $query->orWhere(function($subQuery) {
+                        $subQuery->where('branch_id', null)
+                                 ->whereJsonContains('metadata->account_type', 'main_category');
+                    });
+                })
+                ->first();
+                
+            if ($account) {
+                $parentAccounts->push($account);
+            }
+        }
+
+        return view('accounts.create', compact('organizations', 'branches', 'parentAccounts', 'organizationId', 'hqBranch'));
     }
 
     /**
@@ -88,17 +247,21 @@ class AccountsController extends Controller
      */
     public function store(Request $request)
     {
-        $validated = $request->validate([
+        try {
+            $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'account_type_id' => 'required|exists:account_types,id',
             'organization_id' => 'required|exists:organizations,id',
             'branch_id' => 'nullable|exists:branches,id',
-            'parent_account_id' => 'nullable|exists:accounts,id',
+            'parent_account_id' => 'required|exists:accounts,id',
             'opening_balance' => 'required|numeric|min:0',
             'currency' => 'required|string|size:3',
             'description' => 'nullable|string',
             'status' => 'required|in:active,inactive,suspended,closed',
         ]);
+
+        // Automatically set account_type_id based on parent account
+        $parentAccount = Account::find($validated['parent_account_id']);
+        $validated['account_type_id'] = $parentAccount->account_type_id;
 
         // Enforce default organization to authenticated user's organization
         $validated['organization_id'] = auth()->user()->organization_id ?? $validated['organization_id'];
@@ -147,9 +310,8 @@ class AccountsController extends Controller
                     'opening_balance' => true,
                 ],
             ]);
-        } else if (!str_contains(strtoupper($account->account_number), 'TEST') && !str_contains(strtoupper($account->name), 'TEST')) {
+        } else {
             // Record zero-amount ledger transaction for audit trail when no opening balance
-            // (Skip ledger creation for test accounts)
             \App\Models\GeneralLedger::create([
                 'organization_id' => $account->organization_id,
                 'branch_id' => $account->branch_id,
@@ -160,7 +322,7 @@ class AccountsController extends Controller
                 'amount' => 0,
                 'currency' => $account->currency,
                 'description' => 'Account opened with zero opening balance',
-                'reference_type' => Account::class,
+                'reference_type' => 'opening_balance',
                 'reference_id' => $account->id,
                 'created_by' => auth()->id(),
                 'approved_by' => auth()->id(),
@@ -182,6 +344,18 @@ class AccountsController extends Controller
         );
 
         return redirect()->route('accounts.index')->with('success', 'Account created successfully.');
+        
+        } catch (\Exception $e) {
+            \Log::error('Account creation failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'request_data' => $request->all()
+            ]);
+            
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Account creation failed: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -189,8 +363,17 @@ class AccountsController extends Controller
      */
     public function show(Account $account)
     {
-        $account->load(['accountType', 'organization', 'branch', 'realAccount']);
-        return view('accounts.show', compact('account'));
+        $account->load(['accountType', 'organization', 'branch', 'mappedRealAccounts']);
+        
+        // Get recent transactions for this account from general ledger
+        $recentTransactions = \App\Models\GeneralLedger::where('account_id', $account->id)
+            ->with(['branch'])
+            ->orderBy('transaction_date', 'desc')
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get();
+        
+        return view('accounts.show', compact('account', 'recentTransactions'));
     }
 
     /**
@@ -256,15 +439,38 @@ class AccountsController extends Controller
      */
     public function disable(Account $account)
     {
-        $account->delete(); // Soft delete
+        // Verify the account belongs to the user's organization
+        $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
+        
+        if ($account->organization_id !== $organizationId) {
+            return redirect()->back()->with('error', 'You do not have permission to modify this account.');
+        }
 
-        SystemLog::log(
-            'account_disabled',
-            "Account disabled: {$account->name} ({$account->account_number})",
-            'warning',
-            $account,
-            auth()->id()
-        );
+        // Check if this is a status change (from branch accounts page) or soft delete
+        $request = request();
+        if ($request->has('action') && $request->get('action') === 'status_change') {
+            // Change status to inactive instead of soft delete
+            $account->update(['status' => 'inactive']);
+            
+            SystemLog::log(
+                'account_status_changed',
+                "Account status changed to inactive: {$account->name} ({$account->account_number})",
+                'warning',
+                $account,
+                auth()->id()
+            );
+        } else {
+            // Original behavior - soft delete
+            $account->delete(); // Soft delete
+            
+            SystemLog::log(
+                'account_disabled',
+                "Account disabled: {$account->name} ({$account->account_number})",
+                'warning',
+                $account,
+                auth()->id()
+            );
+        }
 
         return redirect()->back()->with('success', 'Account has been disabled successfully.');
     }
@@ -454,4 +660,31 @@ class AccountsController extends Controller
 
         return view('accounts.mapped-accounts', compact('mappedAccounts', 'totalBalance'));
     }
+
+    /**
+     * Enable an account
+     */
+    public function enable(Account $account)
+    {
+        // Verify the account belongs to the user's organization
+        $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
+        
+        if ($account->organization_id !== $organizationId) {
+            return redirect()->back()->with('error', 'You do not have permission to modify this account.');
+        }
+
+        $account->update(['status' => 'active']);
+
+        // Log the action
+        SystemLog::log(
+            'account_enabled',
+            "Account {$account->name} ({$account->account_number}) has been enabled",
+            'info',
+            $account,
+            auth()->id()
+        );
+
+        return redirect()->back()->with('success', 'Account has been enabled successfully.');
+    }
+
 }

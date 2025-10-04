@@ -176,51 +176,9 @@ class AccountRecharge extends Model
             return false;
         }
 
-        // First, credit the main account
-        $transactionId = 'RC-' . $this->recharge_number;
-
-        GeneralLedger::createTransaction(
-            $transactionId . '-MAIN',
-            $this->mainAccount,
-            'credit',
-            $this->recharge_amount,
-            "Account recharge: {$this->description}",
-            'AccountRecharge',
-            $this->id,
-            $this->approved_by
-        );
-
-        // Then distribute to branch accounts if distribution plan exists
-        if ($this->distribution_plan && is_array($this->distribution_plan)) {
-            foreach ($this->distribution_plan as $distribution) {
-                $branchAccount = Account::find($distribution['account_id']);
-                if ($branchAccount && $distribution['amount'] > 0) {
-                    // Credit branch account
-                    GeneralLedger::createTransaction(
-                        $transactionId . '-DIST-' . $branchAccount->id,
-                        $branchAccount,
-                        'credit',
-                        $distribution['amount'],
-                        "Distribution from recharge: {$this->recharge_number}",
-                        'AccountRecharge',
-                        $this->id,
-                        $this->approved_by
-                    );
-
-                    // Debit main account for distribution
-                    GeneralLedger::createTransaction(
-                        $transactionId . '-DIST-DEBIT-' . $branchAccount->id,
-                        $this->mainAccount,
-                        'debit',
-                        $distribution['amount'],
-                        "Distribution to {$branchAccount->name}",
-                        'AccountRecharge',
-                        $this->id,
-                        $this->approved_by
-                    );
-                }
-            }
-        }
+        // Use the AccountingService to create proper accounting entries
+        $accountingService = app(\App\Services\AccountingService::class);
+        $accountingService->recordAccountRecharge($this);
 
         $this->update([
             'status' => 'completed',

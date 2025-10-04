@@ -191,7 +191,8 @@ class AccountingService
             $transactionId = 'FT-' . $fundTransfer->transfer_number . '-' . date('YmdHis');
             $amount = $fundTransfer->amount;
 
-            // Debit: Destination Account (Asset/Liability increases)
+            // For fund transfers between asset accounts (e.g., bank to cash, bank to bank):
+            // Debit: Destination Account (Asset increases - money coming in)
             GeneralLedger::createTransaction(
                 $transactionId . '-DESTINATION',
                 $fundTransfer->toAccount,
@@ -203,7 +204,7 @@ class AccountingService
                 $fundTransfer->approved_by
             );
 
-            // Credit: Source Account (Asset/Liability decreases)
+            // Credit: Source Account (Asset decreases - money going out)
             GeneralLedger::createTransaction(
                 $transactionId . '-SOURCE',
                 $fundTransfer->fromAccount,
@@ -225,7 +226,7 @@ class AccountingService
     }
 
     /**
-     * Record account recharge accounting entries
+     * Record account recharge accounting entries (Capital Introduction)
      */
     public function recordAccountRecharge(AccountRecharge $accountRecharge): bool
     {
@@ -235,13 +236,37 @@ class AccountingService
             $transactionId = 'RC-' . $accountRecharge->recharge_number . '-' . date('YmdHis');
             $amount = $accountRecharge->recharge_amount;
 
-            // Credit: Main Account (Capital injection - Equity increases)
+            // For capital introduction: Debit Asset Account, Credit Equity Account
+            // Debit: Main Account (Asset increases - money coming in)
             GeneralLedger::createTransaction(
-                $transactionId . '-MAIN',
+                $transactionId . '-ASSET',
                 $accountRecharge->mainAccount,
+                'debit',
+                $amount,
+                "Capital introduction: {$accountRecharge->description}",
+                'AccountRecharge',
+                $accountRecharge->id,
+                $accountRecharge->approved_by
+            );
+
+            // Credit: Equity Account (Owner's capital increases)
+            $equityAccount = Account::where('organization_id', $accountRecharge->mainAccount->organization_id)
+                ->whereHas('accountType', function($query) {
+                    $query->where('category', 'equity');
+                })
+                ->where('name', 'like', '%Capital%')
+                ->first();
+
+            if (!$equityAccount) {
+                throw new \Exception('Equity account not found for capital introduction');
+            }
+
+            GeneralLedger::createTransaction(
+                $transactionId . '-EQUITY',
+                $equityAccount,
                 'credit',
                 $amount,
-                "Account recharge: {$accountRecharge->description}",
+                "Capital introduction: {$accountRecharge->description}",
                 'AccountRecharge',
                 $accountRecharge->id,
                 $accountRecharge->approved_by
@@ -252,23 +277,23 @@ class AccountingService
                 foreach ($accountRecharge->distribution_plan as $distribution) {
                     $branchAccount = Account::find($distribution['account_id']);
                     if ($branchAccount && $distribution['amount'] > 0) {
-                        // Credit: Branch Account (Asset increases)
+                        // Debit: Branch Account (Asset increases - money going to branch)
                         GeneralLedger::createTransaction(
                             $transactionId . '-DIST-' . $branchAccount->id,
                             $branchAccount,
-                            'credit',
+                            'debit',
                             $distribution['amount'],
-                            "Distribution from recharge: {$accountRecharge->recharge_number}",
+                            "Distribution from capital introduction: {$accountRecharge->recharge_number}",
                             'AccountRecharge',
                             $accountRecharge->id,
                             $accountRecharge->approved_by
                         );
 
-                        // Debit: Main Account (Equity decreases - money going out to branches)
+                        // Credit: Main Account (Asset decreases - money going out to branches)
                         GeneralLedger::createTransaction(
-                            $transactionId . '-DIST-DEBIT-' . $branchAccount->id,
+                            $transactionId . '-DIST-CREDIT-' . $branchAccount->id,
                             $accountRecharge->mainAccount,
-                            'debit',
+                            'credit',
                             $distribution['amount'],
                             "Distribution to {$branchAccount->name}",
                             'AccountRecharge',
@@ -276,6 +301,171 @@ class AccountingService
                             $accountRecharge->approved_by
                         );
                     }
+                }
+            }
+
+            DB::commit();
+            return true;
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Record year-end closing entries
+     */
+    public function recordYearEndClosing($organizationId, $fiscalYear): bool
+    {
+        try {
+            DB::beginTransaction();
+
+            $transactionId = 'YEC-' . $fiscalYear . '-' . date('YmdHis');
+
+            // Get all revenue and expense accounts
+            $revenueAccounts = Account::where('organization_id', $organizationId)
+                ->whereHas('accountType', function($query) {
+                    $query->where('category', 'revenue');
+                })
+                ->get();
+
+            $expenseAccounts = Account::where('organization_id', $organizationId)
+                ->whereHas('accountType', function($query) {
+                    $query->where('category', 'expense');
+                })
+                ->get();
+
+            // Get income summary account
+            $incomeSummaryAccount = Account::where('organization_id', $organizationId)
+                ->where('name', 'like', '%Income Summary%')
+                ->first();
+
+            if (!$incomeSummaryAccount) {
+                throw new \Exception('Income Summary account not found');
+            }
+
+            $totalRevenue = 0;
+            $totalExpenses = 0;
+
+            // Close revenue accounts to income summary
+            foreach ($revenueAccounts as $account) {
+                $balance = $this->calculateAccountBalance($account);
+                if ($balance > 0) {
+                    // Debit: Revenue Account (close to zero)
+                    GeneralLedger::createTransaction(
+                        $transactionId . '-REV-' . $account->id,
+                        $account,
+                        'debit',
+                        $balance,
+                        "Year-end closing: Revenue account closed",
+                        'YearEndClosing',
+                        $fiscalYear,
+                        auth()->id()
+                    );
+
+                    // Credit: Income Summary Account
+                    GeneralLedger::createTransaction(
+                        $transactionId . '-REV-SUMMARY-' . $account->id,
+                        $incomeSummaryAccount,
+                        'credit',
+                        $balance,
+                        "Year-end closing: Revenue from {$account->name}",
+                        'YearEndClosing',
+                        $fiscalYear,
+                        auth()->id()
+                    );
+
+                    $totalRevenue += $balance;
+                }
+            }
+
+            // Close expense accounts to income summary
+            foreach ($expenseAccounts as $account) {
+                $balance = $this->calculateAccountBalance($account);
+                if ($balance > 0) {
+                    // Credit: Expense Account (close to zero)
+                    GeneralLedger::createTransaction(
+                        $transactionId . '-EXP-' . $account->id,
+                        $account,
+                        'credit',
+                        $balance,
+                        "Year-end closing: Expense account closed",
+                        'YearEndClosing',
+                        $fiscalYear,
+                        auth()->id()
+                    );
+
+                    // Debit: Income Summary Account
+                    GeneralLedger::createTransaction(
+                        $transactionId . '-EXP-SUMMARY-' . $account->id,
+                        $incomeSummaryAccount,
+                        'debit',
+                        $balance,
+                        "Year-end closing: Expense from {$account->name}",
+                        'YearEndClosing',
+                        $fiscalYear,
+                        auth()->id()
+                    );
+
+                    $totalExpenses += $balance;
+                }
+            }
+
+            // Transfer net income/loss to retained earnings
+            $netIncome = $totalRevenue - $totalExpenses;
+            $retainedEarningsAccount = Account::where('organization_id', $organizationId)
+                ->where('name', 'like', '%Retained Earnings%')
+                ->first();
+
+            if ($retainedEarningsAccount) {
+                if ($netIncome > 0) {
+                    // Net income: Debit Income Summary, Credit Retained Earnings
+                    GeneralLedger::createTransaction(
+                        $transactionId . '-NET-INCOME',
+                        $incomeSummaryAccount,
+                        'debit',
+                        $netIncome,
+                        "Year-end closing: Net income transferred to retained earnings",
+                        'YearEndClosing',
+                        $fiscalYear,
+                        auth()->id()
+                    );
+
+                    GeneralLedger::createTransaction(
+                        $transactionId . '-RETAINED-EARNINGS',
+                        $retainedEarningsAccount,
+                        'credit',
+                        $netIncome,
+                        "Year-end closing: Net income for fiscal year {$fiscalYear}",
+                        'YearEndClosing',
+                        $fiscalYear,
+                        auth()->id()
+                    );
+                } else {
+                    // Net loss: Credit Income Summary, Debit Retained Earnings
+                    $netLoss = abs($netIncome);
+                    GeneralLedger::createTransaction(
+                        $transactionId . '-NET-LOSS',
+                        $incomeSummaryAccount,
+                        'credit',
+                        $netLoss,
+                        "Year-end closing: Net loss transferred to retained earnings",
+                        'YearEndClosing',
+                        $fiscalYear,
+                        auth()->id()
+                    );
+
+                    GeneralLedger::createTransaction(
+                        $transactionId . '-RETAINED-EARNINGS-LOSS',
+                        $retainedEarningsAccount,
+                        'debit',
+                        $netLoss,
+                        "Year-end closing: Net loss for fiscal year {$fiscalYear}",
+                        'YearEndClosing',
+                        $fiscalYear,
+                        auth()->id()
+                    );
                 }
             }
 

@@ -15,6 +15,22 @@
 
         <!-- Create Account Form -->
         <div class="bg-white rounded-lg shadow-sm p-6">
+            @if(session('error'))
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                    {{ session('error') }}
+                </div>
+            @endif
+            
+            @if($errors->any())
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+                    <ul>
+                        @foreach($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
+            
             <form action="{{ route('accounts.store') }}" method="POST" class="space-y-6">
                 @csrf
                 
@@ -27,17 +43,8 @@
                                placeholder="Enter account name">
                     </div>
 
-                    <!-- Account Type -->
-                    <div>
-                        <label for="account_type_id" class="block text-sm font-medium text-gray-700 mb-2">Account Type</label>
-                        <select id="account_type_id" name="account_type_id" required
-                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
-                            <option value="">Select account type</option>
-                            @foreach($accountTypes as $accountType)
-                                <option value="{{ $accountType->id }}">{{ $accountType->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
+                    <!-- Currency (Hidden - defaulted to TZS) -->
+                    <input type="hidden" name="currency" value="TZS">
 
                     <!-- Organization (default to user's organization) -->
                     <div>
@@ -62,38 +69,32 @@
                         </select>
                     </div>
 
-                    <!-- Parent Account (for sub-accounts) -->
+                    <!-- Parent Account (Main Categories Only) -->
                     <div>
-                        <label for="parent_account_id" class="block text-sm font-medium text-gray-700 mb-2">Parent Account (for Sub-Account)</label>
-                        <select id="parent_account_id" name="parent_account_id"
+                        <label for="parent_account_id" class="block text-sm font-medium text-gray-700 mb-2">Main Account</label>
+                        <select id="parent_account_id" name="parent_account_id" required
                                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
-                            <option value="">None (Create main category account)</option>
-                            @foreach($parentAccounts as $parent)
+                            <option value="">Select main account</option>
+                            @forelse($parentAccounts as $parent)
                                 <option value="{{ $parent->id }}">{{ $parent->name }} ({{ $parent->account_number }})</option>
-                            @endforeach
+                            @empty
+                                <option value="" disabled>No main accounts found</option>
+                            @endforelse
                         </select>
-                        <p class="mt-1 text-xs text-gray-500">Selecting a parent makes this a sub-account for reporting.</p>
+                        <p class="mt-1 text-xs text-gray-500">Choose which main account this sub-account belongs to.</p>
+                        @if($hqBranch)
+                            <p class="mt-1 text-xs text-blue-600">Account categories from {{ $hqBranch->name }}</p>
+                        @endif
                     </div>
 
                     <!-- Opening Balance -->
                     <div>
                         <label for="opening_balance" class="block text-sm font-medium text-gray-700 mb-2">Opening Balance</label>
-                        <input type="number" id="opening_balance" name="opening_balance" step="0.01" min="0" required
-                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        <input type="number" id="opening_balance" name="opening_balance" step="0.01" min="0" required value="0" readonly
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600 cursor-not-allowed"
                                placeholder="0.00">
                     </div>
 
-                    <!-- Currency -->
-                    <div>
-                        <label for="currency" class="block text-sm font-medium text-gray-700 mb-2">Currency</label>
-                        <select id="currency" name="currency" required
-                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
-                            <option value="TZS" selected>TZS (Tanzanian Shilling)</option>
-                            <option value="TZS">TZS (Tanzanian Shilling)</option>
-                            <option value="EUR">EUR (Euro)</option>
-                            <option value="GBP">GBP (British Pound)</option>
-                        </select>
-                    </div>
                 </div>
 
                 <!-- Description -->
