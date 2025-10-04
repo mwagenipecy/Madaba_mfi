@@ -34,8 +34,8 @@ class OrganizationRegistrationService
             // Create HQ Branch automatically
             $hqBranch = $this->createHQBranch($organization);
 
-            // Create Main 5 Accounts (organization-level, no branch)
-            $mainAccounts = $this->createMainAccounts($organization);
+            // Create Main 5 Accounts (attached to HQ Branch)
+            $mainAccounts = $this->createMainAccounts($organization, $hqBranch);
 
             // Create General Ledger entries for zero balance accounts
             $this->createZeroBalanceLedgerEntries($mainAccounts, $organization);
@@ -95,9 +95,9 @@ class OrganizationRegistrationService
     }
 
     /**
-     * Create main 5 accounts for the organization
+     * Create main 5 accounts for the organization (attached to HQ Branch)
      */
-    private function createMainAccounts(Organization $organization)
+    private function createMainAccounts(Organization $organization, Branch $hqBranch)
     {
         // Get the 5 main account types
         $mainAccountTypes = AccountType::where('is_main_account', true)
@@ -114,17 +114,19 @@ class OrganizationRegistrationService
                 'name' => $accountType->name,
                 'account_type_id' => $accountType->id,
                 'organization_id' => $organization->id,
-                'branch_id' => null, // Organization-level main category (no branch)
+                'branch_id' => $hqBranch->id, // Attached to HQ branch
                 'parent_account_id' => null,
                 'balance' => 0.00,
                 'opening_balance' => 0.00,
                 'currency' => 'TZS',
-                'description' => 'Main ' . $accountType->name . ' category for ' . $organization->name,
+                'description' => 'Main ' . $accountType->name . ' category for ' . $organization->name . ' (HQ Branch)',
                 'status' => 'active',
                 'opening_date' => now(),
                 'metadata' => [
                     'account_type' => 'main_category',
                     'auto_created' => true,
+                    'hq_branch_account' => true,
+                    'is_hq_account' => true,
                 ],
             ]);
 
@@ -140,17 +142,17 @@ class OrganizationRegistrationService
     private function createZeroBalanceLedgerEntries(array $accounts, Organization $organization)
     {
         foreach ($accounts as $account) {
-            // Create opening balance entry
+            // Create opening balance entry (zero amount transaction)
             GeneralLedger::create([
                 'organization_id' => $organization->id,
-                'branch_id' => $account->branch_id,
+                'branch_id' => $account->branch_id, // Will be HQ branch ID now
                 'transaction_id' => 'OPEN-' . $account->account_number . '-' . now()->format('YmdHis'),
                 'transaction_date' => now(),
                 'account_id' => $account->id,
                 'transaction_type' => 'debit', // Opening balance is typically a debit
                 'amount' => 0.00,
                 'currency' => 'TZS',
-                'description' => 'Opening balance for ' . $account->name,
+                'description' => 'Opening balance for ' . $account->name . ' (HQ Branch)',
                 'reference_type' => 'opening_balance',
                 'reference_id' => $account->id,
                 'created_by' => 1, // System user
@@ -161,6 +163,7 @@ class OrganizationRegistrationService
                     'account_type' => 'main_category',
                     'auto_created' => true,
                     'opening_balance' => true,
+                    'hq_branch_account' => true,
                 ],
             ]);
         }

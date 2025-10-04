@@ -226,7 +226,19 @@ Route::middleware([
         Route::get('/details', [App\Http\Controllers\OrganizationSettingsController::class, 'details'])->name('details');
         Route::get('/users', [App\Http\Controllers\OrganizationSettingsController::class, 'users'])->name('users');
         Route::get('/users/create', [App\Http\Controllers\OrganizationSettingsController::class, 'createUser'])->name('users.create');
+        Route::get('/users/{user}', [App\Http\Controllers\OrganizationSettingsController::class, 'showUser'])->name('users.show');
+        Route::get('/mapped-account-balances', [App\Http\Controllers\OrganizationSettingsController::class, 'mappedAccountBalances'])->name('mapped-account-balances');
+        Route::get('/users/{user}/edit', [App\Http\Controllers\OrganizationSettingsController::class, 'editUser'])->name('users.edit');
+        Route::put('/users/{user}', [App\Http\Controllers\OrganizationSettingsController::class, 'updateUser'])->name('users.update');
         Route::get('/edit', [App\Http\Controllers\OrganizationSettingsController::class, 'edit'])->name('edit');
+        
+        // Real Account Mapping Routes
+        Route::get('/real-accounts', [App\Http\Controllers\OrganizationSettingsController::class, 'realAccounts'])->name('real-accounts.index');
+        Route::post('/real-accounts', [App\Http\Controllers\OrganizationSettingsController::class, 'storeRealAccount'])->name('real-accounts.store');
+        Route::get('/real-accounts/{realAccount}', [App\Http\Controllers\OrganizationSettingsController::class, 'showRealAccount'])->name('real-accounts.show');
+        Route::get('/real-accounts/{realAccount}/edit', [App\Http\Controllers\OrganizationSettingsController::class, 'editRealAccount'])->name('real-accounts.edit');
+        Route::put('/real-accounts/{realAccount}', [App\Http\Controllers\OrganizationSettingsController::class, 'updateRealAccount'])->name('real-accounts.update');
+        Route::delete('/real-accounts/{realAccount}', [App\Http\Controllers\OrganizationSettingsController::class, 'destroyRealAccount'])->name('real-accounts.destroy');
     });
 
     // Management (System Administration)
@@ -282,8 +294,6 @@ Route::prefix('super-admin')->name('super-admin.')->group(function () {
     Route::patch('/organizations/{organization}/reactivate', [App\Http\Controllers\SuperAdminController::class, 'reactivate'])->name('organizations.reactivate');
     Route::get('/organizations/{organization}/statistics', [App\Http\Controllers\SuperAdminController::class, 'statistics'])->name('organizations.statistics');
     
-    // Mapped Account Balance Views
-    Route::get('/mapped-account-balances', [App\Http\Controllers\SuperAdminController::class, 'mappedAccountBalances'])->name('mapped-account-balances');
     Route::get('/organizations/{organization}/mapped-accounts', [App\Http\Controllers\SuperAdminController::class, 'organizationMappedAccounts'])->name('organizations.mapped-accounts');
 });
 

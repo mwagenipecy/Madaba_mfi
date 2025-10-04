@@ -20,9 +20,9 @@
                         <p>When you create an organization, the following will be set up automatically:</p>
                         <ul class="mt-2 list-disc list-inside space-y-1">
                             <li><strong>HQ Branch:</strong> Main headquarters branch with organization details</li>
-                            <li><strong>Main Accounts:</strong> 5 main account categories (Assets, Liabilities, Equity, Revenue, Expenses)</li>
-                            <li><strong>General Ledger:</strong> Zero balance entries for all main accounts</li>
-                            <li><strong>Admin User:</strong> Organization administrator with full permissions</li>
+                            <li><strong>Main Accounts:</strong> 5 main account categories (Assets, Liabilities, Equity, Revenue, Expenses) attached to HQ Branch</li>
+                            <li><strong>General Ledger:</strong> Zero amount transaction records for all main accounts</li>
+                            <li><strong>Admin User:</strong> Organization administrator with full permissions assigned to HQ Branch</li>
                         </ul>
                     </div>
                 </div>

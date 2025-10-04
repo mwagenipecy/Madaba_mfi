@@ -186,20 +186,20 @@
             <!-- Charts Section -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
                 <!-- Monthly Disbursements vs Collections -->
-                <div class="chart-container bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6">
                         <h3 class="text-lg font-semibold text-gray-900 mb-4">Monthly Performance</h3>
-                        <div class="h-64 pb-8">
+                        <div class="h-64">
                             <canvas id="monthlyChart"></canvas>
                         </div>
                     </div>
                 </div>
 
                 <!-- Loan Status Distribution -->
-                <div class="chart-container bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                     <div class="p-6">
                         <h3 class="text-lg font-semibold text-gray-900 mb-4">Loan Status Distribution</h3>
-                        <div class="h-64 pb-12">
+                        <div class="h-64">
                             <canvas id="statusChart"></canvas>
                         </div>
                     </div>
@@ -416,148 +416,42 @@
     <!-- Chart.js CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
-    <!-- Force chart text visibility -->
-    <style>
-        #monthlyChart, #statusChart, #expenseChart, #accountTypeChart {
-            color: #000000 !important;
-        }
-        
-        .chart-container {
-            background: white !important;
-            color: #000000 !important;
-        }
-        
-        .chart-container * {
-            color: #000000 !important;
-        }
-    </style>
-    
     <script>
-        // Theme detection function
-        function isDarkMode() {
-            if (document.documentElement.classList.contains('dark')) return true;
-            if (document.body.classList.contains('dark')) return true;
-            if (document.documentElement.getAttribute('data-theme') === 'dark') return true;
-            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return true;
-            return false;
-        }
-
-        // Get theme-aware colors
-        function getThemeColors() {
-            const isDark = isDarkMode();
-            
-            const lightModeColors = {
-                text: '#000000',
-                textSecondary: '#000000',
-                textMuted: '#000000',
-                axisLabels: '#000000',
-            };
-            
-            const darkModeColors = {
-                text: 'rgba(255, 255, 255, 0.9)',
-                textSecondary: 'rgba(255, 255, 255, 0.8)',
-                textMuted: 'rgba(255, 255, 255, 0.7)',
-                axisLabels: 'rgba(255, 255, 255, 0.8)',
-            };
-            
-            const baseColors = isDark ? darkModeColors : lightModeColors;
-            
-            return {
-                text: baseColors.text,
-                textSecondary: baseColors.textSecondary,
-                textMuted: baseColors.textMuted,
-                axisLabels: baseColors.axisLabels,
-                gridColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-                borderColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)',
-            };
-        }
-    </script>
-    
-    <script>
-        // Initialize charts with theme-aware configuration
-        function initializeReportsCharts() {
-            const colors = getThemeColors();
-            
-            // Monthly Performance Chart
-            const monthlyCtx = document.getElementById('monthlyChart').getContext('2d');
-            new Chart(monthlyCtx, {
-                type: 'line',
-                data: {
-                    labels: {!! json_encode($monthlyDisbursements->pluck('month')) !!},
-                    datasets: [{
-                        label: 'Disbursements',
-                        data: {!! json_encode($monthlyDisbursements->pluck('amount')) !!},
-                        borderColor: 'rgb(34, 197, 94)',
-                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                        tension: 0.1
-                    }, {
-                        label: 'Collections',
-                        data: {!! json_encode($monthlyCollections->pluck('amount')) !!},
-                        borderColor: 'rgb(59, 130, 246)',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        tension: 0.1
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: {
-                            title: {
-                                display: true,
-                                text: 'Month',
-                                color: '#000000',
-                                font: { size: 14, weight: 'bold', family: 'Arial, sans-serif' },
-                                padding: 20
-                            },
-                            grid: { color: colors.gridColor },
-                            ticks: {
-                                color: '#000000',
-                                padding: 10,
-                                font: { size: 13, weight: 'bold', family: 'Arial, sans-serif' }
-                            }
-                        },
-                        y: {
-                            title: {
-                                display: true,
-                                text: 'Amount (TZS)',
-                                color: '#000000',
-                                font: { size: 14, weight: 'bold', family: 'Arial, sans-serif' },
-                                padding: 20
-                            },
-                            beginAtZero: true,
-                            grid: { color: colors.gridColor },
-                            ticks: {
-                                color: '#000000',
-                                padding: 10,
-                                font: { size: 13, weight: 'bold', family: 'Arial, sans-serif' },
-                                callback: function(value) {
-                                    return 'TZS ' + value.toLocaleString();
-                                }
-                            }
-                        }
-                    },
-                    plugins: {
-                        title: {
-                            display: true,
-                            text: 'Monthly Performance Trends',
-                            color: '#000000',
-                            font: { size: 16, weight: 'bold', family: 'Arial, sans-serif' },
-                            padding: 25
-                        },
-                        legend: {
-                            position: 'top',
-                            labels: {
-                                color: '#000000',
-                                usePointStyle: true,
-                                padding: 20,
-                                font: { size: 14, weight: 'bold', family: 'Arial, sans-serif' }
+        // Monthly Performance Chart
+        const monthlyCtx = document.getElementById('monthlyChart').getContext('2d');
+        new Chart(monthlyCtx, {
+            type: 'line',
+            data: {
+                labels: {!! json_encode($monthlyDisbursements->pluck('month')) !!},
+                datasets: [{
+                    label: 'Disbursements',
+                    data: {!! json_encode($monthlyDisbursements->pluck('amount')) !!},
+                    borderColor: 'rgb(34, 197, 94)',
+                    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                    tension: 0.1
+                }, {
+                    label: 'Collections',
+                    data: {!! json_encode($monthlyCollections->pluck('amount')) !!},
+                    borderColor: 'rgb(59, 130, 246)',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return 'TZS ' + value.toLocaleString();
                             }
                         }
                     }
                 }
-            });
-        }
+            }
+        });
 
         // Loan Status Distribution Chart
         const statusCtx = document.getElementById('statusChart').getContext('2d');
@@ -656,11 +550,6 @@
                     }
                 }
             }
-        });
-        
-        // Initialize charts when DOM is loaded
-        document.addEventListener('DOMContentLoaded', function() {
-            initializeReportsCharts();
         });
     </script>
 </x-app-shell>

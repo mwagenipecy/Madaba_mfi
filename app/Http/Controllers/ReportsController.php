@@ -320,7 +320,7 @@ class ReportsController extends Controller
     {
         $query = Account::where('organization_id', $organizationId)
             ->where('account_type_id', '!=', null)
-            ->with(['accountType', 'realAccounts']);
+            ->with(['accountType', 'mappedRealAccounts']);
 
         if ($branchId) {
             $query->where('branch_id', $branchId);
@@ -336,7 +336,7 @@ class ReportsController extends Controller
         ];
 
         foreach ($accounts as $account) {
-            $balance = $account->realAccounts->sum('last_balance') ?? 0;
+            $balance = $account->mappedRealAccounts->sum('last_balance') ?? 0;
             $balances['total_balance'] += $balance;
 
             if (str_contains(strtolower($account->name), 'bank')) {
@@ -412,12 +412,10 @@ class ReportsController extends Controller
             ]);
         }
 
-        // Low account balances
+        // Low balance cash alerts (based on account balances, not real accounts)
         $lowBalanceAccounts = Account::where('organization_id', $organizationId)
-            ->whereHas('realAccounts', function($q) {
-                $q->where('balance', '<', 100000); // Less than 100,000 TZS
-            })
-            ->with(['realAccounts', 'accountType'])
+            ->where('balance', '<', 100000) // Less than 100,000 TZS
+            ->with(['accountType'])
             ->get();
 
         if ($lowBalanceAccounts->count() > 0) {

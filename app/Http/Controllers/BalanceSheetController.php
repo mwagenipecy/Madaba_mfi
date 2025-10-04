@@ -44,7 +44,7 @@ class BalanceSheetController extends Controller
         $accountTypes = AccountType::orderBy('name')->get();
 
         // Get accounts with their balances
-        $query = Account::with(['accountType', 'realAccounts'])
+        $query = Account::with(['accountType', 'mappedRealAccounts'])
             ->where('organization_id', $organizationId);
 
         if ($branchId) {
@@ -103,8 +103,8 @@ class BalanceSheetController extends Controller
      */
     private function calculateAccountBalance($account, $asOfDate)
     {
-        // Get real account balances
-        $realAccountBalance = $account->realAccounts->sum('last_balance');
+        // Get mapped real account balances
+        $realAccountBalance = $account->mappedRealAccounts->sum('last_balance');
 
         // Get general ledger entries up to the as of date
         // Use the balance_after from the last transaction entry for accurate balance

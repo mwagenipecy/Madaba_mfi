@@ -34,27 +34,27 @@
                     <div class="space-y-4">
                         <div class="border-b border-gray-200 pb-4">
                             <label class="text-sm font-medium text-gray-500 block mb-1">Organization Name</label>
-                            <p class="text-gray-900 font-medium">Default Organization</p>
+                            <p class="text-gray-900 font-medium">{{ $organization->name }}</p>
                         </div>
                         <div class="border-b border-gray-200 pb-4">
                             <label class="text-sm font-medium text-gray-500 block mb-1">Organization Type</label>
-                            <p class="text-gray-900">Microfinance Bank</p>
+                            <p class="text-gray-900">{{ ucfirst(str_replace('_', ' ', $organization->type)) }}</p>
                         </div>
                         <div class="border-b border-gray-200 pb-4">
                             <label class="text-sm font-medium text-gray-500 block mb-1">Registration Number</label>
-                            <p class="text-gray-900">ORG001</p>
+                            <p class="text-gray-900">{{ $organization->registration_number }}</p>
                         </div>
                         <div class="border-b border-gray-200 pb-4">
                             <label class="text-sm font-medium text-gray-500 block mb-1">License Number</label>
-                            <p class="text-gray-900">LIC001</p>
+                            <p class="text-gray-900">{{ $organization->license_number ?? 'Not Available' }}</p>
                         </div>
                         <div class="border-b border-gray-200 pb-4">
                             <label class="text-sm font-medium text-gray-500 block mb-1">Status</label>
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ $organization->status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }}">
                                 <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16z{{ $organization->status === 'active' ? 'm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z' : '' }}" clip-rule="evenodd"></path>
                                 </svg>
-                                Active
+                                {{ ucfirst($organization->status) }}
                             </span>
                         </div>
                     </div>
@@ -66,23 +66,23 @@
                     <div class="space-y-4">
                         <div class="border-b border-gray-200 pb-4">
                             <label class="text-sm font-medium text-gray-500 block mb-1">Email Address</label>
-                            <p class="text-gray-900">info@defaultorg.com</p>
+                            <p class="text-gray-900">{{ $organization->email }}</p>
                         </div>
                         <div class="border-b border-gray-200 pb-4">
                             <label class="text-sm font-medium text-gray-500 block mb-1">Phone Number</label>
-                            <p class="text-gray-900">+1234567890</p>
+                            <p class="text-gray-900">{{ $organization->phone }}</p>
                         </div>
                         <div class="border-b border-gray-200 pb-4">
                             <label class="text-sm font-medium text-gray-500 block mb-1">Address</label>
-                            <p class="text-gray-900">123 Main Street<br>Sample City, Sample State<br>Sample Country, 12345</p>
+                            <p class="text-gray-900">{{ $organization->address }}<br>{{ $organization->city }}, {{ $organization->state }}<br>{{ $organization->country }}, {{ $organization->postal_code }}</p>
                         </div>
                         <div class="border-b border-gray-200 pb-4">
                             <label class="text-sm font-medium text-gray-500 block mb-1">Authorized Capital</label>
-                            <p class="text-gray-900">$1,000,000.00</p>
+                            <p class="text-gray-900">{{ $organization->authorized_capital ? number_format($organization->authorized_capital, 2) . ' TZS' : 'Not Available' }}</p>
                         </div>
                         <div class="border-b border-gray-200 pb-4">
                             <label class="text-sm font-medium text-gray-500 block mb-1">Incorporation Date</label>
-                            <p class="text-gray-900">{{ now()->subYears(2)->format('F d, Y') }}</p>
+                            <p class="text-gray-900">{{ $organization->incorporation_date ? $organization->incorporation_date->format('F d, Y') : 'Not Available' }}</p>
                         </div>
                     </div>
                 </div>
@@ -92,9 +92,46 @@
             <div class="mt-8 pt-6 border-t border-gray-200">
                 <h3 class="text-lg font-semibold text-gray-900 mb-4">Description</h3>
                 <p class="text-gray-700 leading-relaxed">
-                    Default organization for system administration. This organization serves as the primary entity for managing users and system operations within the microfinance platform.
+                    {{ $organization->description ?? "Organization information and details for {$organization->name}. This organization operates as a " . str_replace('_', ' ', $organization->type) . " providing financial services." }}
                 </p>
             </div>
+            
+            <!-- Main Accounts Section -->
+            @if($mainAccounts->count() > 0)
+            <div class="mt-8 pt-6 border-t border-gray-200">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Main Accounts</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3 text-left font-medium text-gray-500">Account Name</th>
+                                <th class="px-4 py-3 text-left font-medium text-gray-500">Account Number</th>
+                                <th class="px-4 py-3 text-left font-medium text-gray-500">Branch</th>
+                                <th class="px-4 py-3 text-left font-medium text-gray-500">Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+                            @foreach($mainAccounts as $account)
+                                <tr>
+                                    <td class="px-4 py-3 text-gray-900 font-medium">{{ $account->name }}</td>
+                                    <td class="px-4 py-3 text-gray-900 font-mono text-xs">{{ $account->account_number }}</td>
+                                    <td class="px-4 py-3 text-gray-900">
+                                        @if($hqBranch)
+                                            <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                                {{ $hqBranch->name }}
+                                            </span>
+                                        @else
+                                            <span class="text-gray-500">No Branch</span>
+                                        @endif
+                                    </td>
+                                    <td class="px-4 py-3 text-gray-900">{{ $account->formatted_balance }}</td>
+                                </tr>
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            @endif
         </div>
     </div>
 </x-app-shell>

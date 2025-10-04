@@ -4,12 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class RealAccount extends Model
 {
     protected $fillable = [
-        'account_id',
         'provider_type',
         'provider_name',
         'external_account_id',
@@ -33,19 +33,21 @@ class RealAccount extends Model
     ];
 
     /**
-     * Get the account that owns the real account
+     * Get the accounts that are mapped to this real account (many-to-many)
      */
-    public function account(): BelongsTo
+    public function mappedAccounts(): BelongsToMany
     {
-        return $this->belongsTo(Account::class);
+        return $this->belongsToMany(Account::class, 'account_real_account_mappings', 'real_account_id', 'account_id')
+            ->withPivot(['mapping_description', 'is_active', 'metadata'])
+            ->withTimestamps();
     }
 
     /**
-     * Get the accounts that are mapped to this real account
+     * Get the mapping pivot records
      */
-    public function mappedAccounts(): HasMany
+    public function accountMappings(): HasMany
     {
-        return $this->hasMany(Account::class, 'real_account_id');
+        return $this->hasMany(AccountRealAccountMapping::class, 'real_account_id');
     }
 
     /**

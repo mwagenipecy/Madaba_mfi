@@ -62,12 +62,6 @@ class SystemLogsViewer extends Component
         ]);
     }
 
-    public function exportLogs()
-    {
-        // This would typically export logs to CSV or PDF
-        session()->flash('message', 'Log export functionality will be implemented.');
-    }
-
     public function updatingSearch()
     {
         $this->resetPage();

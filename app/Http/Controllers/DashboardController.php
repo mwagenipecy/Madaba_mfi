@@ -194,7 +194,7 @@ class DashboardController extends Controller
     {
         $query = Account::where('organization_id', $organizationId)
             ->where('account_type_id', '!=', null)
-            ->with(['accountType', 'realAccounts']);
+            ->with(['accountType', 'mappedRealAccounts']);
 
         if ($branchId) {
             $query->where('branch_id', $branchId);
@@ -210,7 +210,7 @@ class DashboardController extends Controller
         ];
 
         foreach ($accounts as $account) {
-            $balance = $account->realAccounts->sum('last_balance') ?? 0;
+            $balance = $account->mappedRealAccounts->sum('last_balance') ?? 0;
             $balances['total_balance'] += $balance;
 
             if (str_contains(strtolower($account->name), 'bank')) {
@@ -327,10 +327,10 @@ class DashboardController extends Controller
             ->when($branchId, function($query) use ($branchId) {
                 return $query->where('branch_id', $branchId);
             })
-            ->with('realAccounts')
+            ->with('mappedRealAccounts')
             ->get()
             ->sum(function($account) {
-                return $account->realAccounts->sum('last_balance');
+                return $account->mappedRealAccounts->sum('last_balance');
             });
 
         if ($totalBalance < 10000) {

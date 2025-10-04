@@ -89,7 +89,7 @@ class SuperAdminController extends Controller
             );
 
             return redirect()->route('super-admin.organizations.show', $result['organization']->id)
-                ->with('success', 'Organization created successfully with HQ branch, main accounts, and admin user.');
+                ->with('success', 'Organization created successfully with HQ branch, main accounts attached to HQ branch, zero amount transactions in general ledger, and admin user.');
 
         } catch (\Exception $e) {
             return back()->withErrors(['error' => 'Failed to create organization: ' . $e->getMessage()])
@@ -109,13 +109,21 @@ class SuperAdminController extends Controller
             'users' => function($query) {
                 $query->where('role', 'admin');
             },
-            'accounts' => function($query) {
-                $query->where('metadata->is_hq_account', true);
-            }
+            'accounts'
         ]);
 
         $hqBranch = $organization->branches->where('is_hq', true)->first();
-        $mainAccounts = $organization->accounts->where('metadata.is_hq_account', true);
+        $mainAccounts = $organization->accounts->filter(function($account) use ($hqBranch) {
+            if ($account->branch_id !== $hqBranch->id || !$account->metadata) {
+                return false;
+            }
+            
+            // Check if it's a main category account (either by is_hq_account flag or account_type)
+            $isHQAccount = $account->metadata['is_hq_account'] ?? false;
+            $accountType = $account->metadata['account_type'] ?? null;
+            
+            return $isHQAccount || $accountType === 'main_category';
+        });
 
         return view('super-admin.organizations.show', compact('organization', 'hqBranch', 'mainAccounts'));
     }

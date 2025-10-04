@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -80,11 +81,29 @@ class Account extends Model
     }
 
     /**
-     * Get the mapped real account for this account
+     * Get the mapped real accounts for this account (many-to-many)
+     */
+    public function mappedRealAccounts(): BelongsToMany
+    {
+        return $this->belongsToMany(RealAccount::class, 'account_real_account_mappings', 'account_id', 'real_account_id')
+            ->withPivot(['mapping_description', 'is_active', 'metadata'])
+            ->withTimestamps();
+    }
+
+    /**
+     * Backward compatibility - get the first mapped real account
      */
     public function mappedRealAccount(): BelongsTo
     {
         return $this->belongsTo(RealAccount::class, 'real_account_id');
+    }
+
+    /**
+     * Get the mapping pivot records
+     */
+    public function realAccountMappings(): HasMany
+    {
+        return $this->hasMany(AccountRealAccountMapping::class, 'account_id');
     }
 
     /**
