@@ -45,19 +45,51 @@ class PaymentController extends Controller
     {
         $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
         
-        $accounts = Account::where('organization_id', $organizationId)
+        // Get all branches for the organization
+        $branches = Branch::where('organization_id', $organizationId)
             ->where('status', 'active')
-            ->with(['accountType', 'branch'])
+            ->orderBy('is_hq', 'desc') // HQ first
+            ->orderBy('name')
             ->get();
 
-        // Calculate accurate balances using AccountingService
+        // Get all accounts grouped by branch
+        $accountsByBranch = [];
         $accountingService = app(\App\Services\AccountingService::class);
-        $accounts = $accounts->map(function($account) use ($accountingService) {
+
+        foreach ($branches as $branch) {
+            $accounts = Account::where('organization_id', $organizationId)
+                ->where('branch_id', $branch->id)
+                ->where('status', 'active')
+                ->where('account_classification', 'internal') // Only internal accounts for fund transfers
+                ->with(['accountType', 'branch'])
+                ->get();
+
+            // Calculate accurate balances
+            $accounts = $accounts->map(function($account) use ($accountingService) {
+                $account->calculated_balance = $accountingService->calculateAccountBalance($account);
+                return $account;
+            });
+
+            $accountsByBranch[$branch->id] = $accounts;
+        }
+
+        // Get HQ accounts (main organization accounts)
+        $hqAccounts = Account::where('organization_id', $organizationId)
+            ->whereNull('branch_id')
+            ->where('status', 'active')
+            ->where('account_classification', 'internal')
+            ->with(['accountType'])
+            ->get();
+
+        // Calculate accurate balances for HQ accounts
+        $hqAccounts = $hqAccounts->map(function($account) use ($accountingService) {
             $account->calculated_balance = $accountingService->calculateAccountBalance($account);
             return $account;
         });
 
-        return view('payments.create-fund-transfer', compact('accounts'));
+        $accountsByBranch['hq'] = $hqAccounts;
+
+        return view('payments.create-fund-transfer', compact('branches', 'accountsByBranch'));
     }
 
     /**
@@ -66,13 +98,17 @@ class PaymentController extends Controller
     public function storeFundTransfer(Request $request)
     {
         $request->validate([
+            'from_branch_id' => 'required|string',
             'from_account_id' => 'required|exists:accounts,id',
+            'to_branch_id' => 'required|string',
             'to_account_id' => 'required|exists:accounts,id|different:from_account_id',
             'amount' => 'required|numeric|min:0.01',
             'description' => 'required|string|max:500',
         ], [
+            'from_branch_id.required' => 'Source branch is required.',
             'from_account_id.required' => 'Source account is required.',
             'from_account_id.exists' => 'Selected source account does not exist.',
+            'to_branch_id.required' => 'Destination branch is required.',
             'to_account_id.required' => 'Destination account is required.',
             'to_account_id.exists' => 'Selected destination account does not exist.',
             'to_account_id.different' => 'Cannot transfer funds to the same account.',
@@ -86,23 +122,46 @@ class PaymentController extends Controller
         try {
             $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
             
-            // Validate accounts belong to the same organization
+            // Validate accounts belong to the same organization and are internal accounts
             $fromAccount = Account::where('id', $request->from_account_id)
                 ->where('organization_id', $organizationId)
                 ->where('status', 'active')
+                ->where('account_classification', 'internal')
                 ->first();
             
             $toAccount = Account::where('id', $request->to_account_id)
                 ->where('organization_id', $organizationId)
                 ->where('status', 'active')
+                ->where('account_classification', 'internal')
                 ->first();
 
             if (!$fromAccount) {
-                return redirect()->back()->with('error', 'Source account not found or inactive.');
+                return redirect()->back()->with('error', 'Source account not found, inactive, or not an internal account.');
             }
 
             if (!$toAccount) {
-                return redirect()->back()->with('error', 'Destination account not found or inactive.');
+                return redirect()->back()->with('error', 'Destination account not found, inactive, or not an internal account.');
+            }
+
+            // Validate branch selection matches account branches
+            if ($request->from_branch_id === 'hq') {
+                if ($fromAccount->branch_id !== null) {
+                    return redirect()->back()->with('error', 'Selected source account does not belong to HQ branch.');
+                }
+            } else {
+                if ($fromAccount->branch_id != $request->from_branch_id) {
+                    return redirect()->back()->with('error', 'Selected source account does not belong to the selected branch.');
+                }
+            }
+
+            if ($request->to_branch_id === 'hq') {
+                if ($toAccount->branch_id !== null) {
+                    return redirect()->back()->with('error', 'Selected destination account does not belong to HQ branch.');
+                }
+            } else {
+                if ($toAccount->branch_id != $request->to_branch_id) {
+                    return redirect()->back()->with('error', 'Selected destination account does not belong to the selected branch.');
+                }
             }
 
             // Check if source account has sufficient balance using AccountingService
@@ -125,11 +184,14 @@ class PaymentController extends Controller
                 'amount' => $request->amount,
                 'currency' => 'TZS',
                 'description' => $request->description,
-                'status' => 'pending',
+                'status' => 'pending', // Will remain pending until approved
                 'requested_by' => auth()->id(),
                 'metadata' => [
+                    'from_branch_id' => $request->from_branch_id,
+                    'to_branch_id' => $request->to_branch_id,
                     'request_ip' => $request->ip(),
                     'user_agent' => $request->userAgent(),
+                    'available_balance' => $currentBalance,
                 ]
             ]);
 
@@ -144,16 +206,19 @@ class PaymentController extends Controller
                     'requested_by' => auth()->id(),
                     'approver_id' => $approver->id,
                     'status' => 'pending',
-                    'description' => "Fund transfer approval: {$fundTransfer->transfer_number}",
+                    'description' => "Fund transfer approval: {$fundTransfer->transfer_number} - From: {$fundTransfer->fromAccount->name} To: {$fundTransfer->toAccount->name}",
                     'metadata' => [
                         'amount' => $request->amount,
                         'from_account' => $fundTransfer->fromAccount->name,
-                        'to_account' => $fundTransfer->toAccount->name
+                        'from_branch' => $fundTransfer->fromAccount->branch ? $fundTransfer->fromAccount->branch->name : 'HQ',
+                        'to_account' => $fundTransfer->toAccount->name,
+                        'to_branch' => $fundTransfer->toAccount->branch ? $fundTransfer->toAccount->branch->name : 'HQ',
+                        'transfer_number' => $fundTransfer->transfer_number,
                     ]
                 ]);
             }
 
-            return redirect()->route('payments')->with('success', 'Fund transfer request submitted successfully. It will be reviewed for approval.');
+            return redirect()->route('payments')->with('success', 'Fund transfer request submitted successfully. It will be reviewed for approval before execution.');
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'An error occurred while creating the fund transfer: ' . $e->getMessage());
         }
@@ -166,36 +231,52 @@ class PaymentController extends Controller
     {
         $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
         
-        $mainAccounts = Account::where('organization_id', $organizationId)
+        // Get giver accounts (external accounts that represent money coming into the system)
+        // Giver accounts should be organization-level accounts (not branch-specific)
+        $giverAccounts = Account::where('organization_id', $organizationId)
             ->where('status', 'active')
-            ->whereNull('branch_id')
-            ->whereHas('accountType', function($query) {
-                $query->whereIn('name', ['Assets', 'Cash', 'Bank', 'Investment']);
-            })
-            ->distinct()
+            ->where('account_classification', 'external')
+            ->where('external_account_type', 'giver')
+            ->whereNull('branch_id') // Organization-level accounts only
+            ->with(['accountType'])
             ->get();
 
-        $branches = Branch::where('organization_id', $organizationId)->get();
+        // Get the 5 main organization accounts for this specific organization
+        // Find one account for each of the 5 main account types (Assets, Revenue, Liability, Equity, Expense)
+        $accountTypes = \App\Models\AccountType::whereIn('name', ['Assets', 'Revenue', 'Liability', 'Equity', 'Expense'])
+            ->orderBy('name')
+            ->get();
 
-        // Prepare branch accounts for JavaScript
-        $branchAccounts = $branches->map(function($branch) use ($organizationId) {
-            $branchAccount = Account::where('organization_id', $organizationId)
-                ->where('branch_id', $branch->id)
-                ->whereHas('accountType', function($query) {
-                    $query->where('name', 'Liability');
-                })
+        $capitalAccounts = collect();
+        foreach ($accountTypes as $accountType) {
+            $account = Account::where('organization_id', $organizationId)
+                ->where('status', 'active')
+                ->where('account_classification', 'internal')
+                ->where('account_type_id', $accountType->id)
+                ->whereNull('branch_id')
+                ->whereJsonContains('metadata->account_type', 'main_category')
+                ->with(['accountType'])
                 ->first();
-            
-            return [
-                'id' => $branchAccount ? $branchAccount->id : null,
-                'name' => $branchAccount ? $branchAccount->name : null,
-                'branch_name' => $branch->name
-            ];
-        })->filter(function($account) {
-            return $account['id'] !== null;
+                
+            if ($account) {
+                $capitalAccounts->push($account);
+            }
+        }
+
+        // Calculate balances for giver accounts (these should be negative/credit balances)
+        $accountingService = app(\App\Services\AccountingService::class);
+        $giverAccounts = $giverAccounts->map(function($account) use ($accountingService) {
+            $account->calculated_balance = $accountingService->calculateAccountBalance($account);
+            return $account;
         });
 
-        return view('payments.create-account-recharge', compact('mainAccounts', 'branches', 'branchAccounts'));
+        $capitalAccounts = $capitalAccounts->map(function($account) use ($accountingService) {
+            $account->calculated_balance = $accountingService->calculateAccountBalance($account);
+            return $account;
+        });
+
+
+        return view('payments.create-account-recharge', compact('giverAccounts', 'capitalAccounts'));
     }
 
     /**
@@ -204,30 +285,68 @@ class PaymentController extends Controller
     public function storeAccountRecharge(Request $request)
     {
         $request->validate([
-            'main_account_id' => 'required|exists:accounts,id',
+            'giver_account_id' => 'required|exists:accounts,id',
+            'capital_account_id' => 'required|exists:accounts,id',
             'recharge_amount' => 'required|numeric|min:0.01',
             'description' => 'required|string|max:500',
-            'distribution_plan' => 'required|array|min:1',
-            'distribution_plan.*.account_id' => 'required|exists:accounts,id',
-            'distribution_plan.*.amount' => 'required|numeric|min:0.01',
+        ], [
+            'giver_account_id.required' => 'Source giver account is required.',
+            'giver_account_id.exists' => 'Selected giver account does not exist.',
+            'capital_account_id.required' => 'Destination capital account is required.',
+            'capital_account_id.exists' => 'Selected capital account does not exist.',
+            'recharge_amount.required' => 'Capital injection amount is required.',
+            'recharge_amount.numeric' => 'Amount must be a valid number.',
+            'recharge_amount.min' => 'Amount must be greater than 0.',
+            'description.required' => 'Description is required.',
+            'description.max' => 'Description cannot exceed 500 characters.',
         ]);
 
         try {
             $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
             
+            // Validate accounts belong to the same organization
+            $giverAccount = Account::where('id', $request->giver_account_id)
+                ->where('organization_id', $organizationId)
+                ->where('status', 'active')
+                ->where('account_classification', 'external')
+                ->where('external_account_type', 'giver')
+                ->first();
+            
+            $capitalAccount = Account::where('id', $request->capital_account_id)
+                ->where('organization_id', $organizationId)
+                ->where('status', 'active')
+                ->where('account_classification', 'internal')
+                ->whereNull('branch_id')
+                ->first();
+
+            if (!$giverAccount) {
+                return redirect()->back()->with('error', 'Selected giver account not found, inactive, or not a valid giver account.');
+            }
+
+            if (!$capitalAccount) {
+                return redirect()->back()->with('error', 'Selected capital account not found, inactive, or not a valid capital account.');
+            }
+
+            // Prevent using the same account for both source and destination
+            if ($giverAccount->id === $capitalAccount->id) {
+                return redirect()->back()->with('error', 'Source and destination accounts cannot be the same.');
+            }
+
             // Generate recharge number
             $rechargeNumber = 'RC-' . date('Ymd') . '-' . str_pad(AccountRecharge::count() + 1, 4, '0', STR_PAD_LEFT);
 
             $accountRecharge = AccountRecharge::create([
                 'recharge_number' => $rechargeNumber,
-                'main_account_id' => $request->main_account_id,
+                'main_account_id' => $request->capital_account_id, // Keep field name for compatibility
                 'recharge_amount' => $request->recharge_amount,
                 'currency' => 'TZS',
                 'description' => $request->description,
-                'status' => 'pending',
+                'status' => 'pending', // Will remain pending until approved
                 'requested_by' => auth()->id(),
-                'distribution_plan' => $request->distribution_plan,
+                'distribution_plan' => null, // No distribution plan needed for capital injection
                 'metadata' => [
+                    'giver_account_id' => $request->giver_account_id,
+                    'capital_account_id' => $request->capital_account_id,
                     'request_ip' => $request->ip(),
                     'user_agent' => $request->userAgent(),
                 ]
@@ -244,16 +363,18 @@ class PaymentController extends Controller
                     'requested_by' => auth()->id(),
                     'approver_id' => $approver->id,
                     'status' => 'pending',
-                    'description' => "Account recharge approval: {$accountRecharge->recharge_number}",
+                    'description' => "Capital injection approval: {$accountRecharge->recharge_number} - From: {$giverAccount->name} To: {$capitalAccount->name}",
                     'metadata' => [
                         'amount' => $request->recharge_amount,
-                        'main_account' => $accountRecharge->mainAccount->name,
-                        'distribution_count' => count($request->distribution_plan)
+                        'giver_account' => $giverAccount->name,
+                        'giver_branch' => $giverAccount->branch ? $giverAccount->branch->name : 'HQ',
+                        'capital_account' => $capitalAccount->name,
+                        'recharge_number' => $accountRecharge->recharge_number,
                     ]
                 ]);
             }
 
-            return redirect()->route('payments')->with('success', 'Account recharge request submitted successfully. It will be reviewed for approval.');
+            return redirect()->route('payments')->with('success', 'Capital injection request submitted successfully. It will be reviewed for approval before execution.');
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'An error occurred while creating the account recharge: ' . $e->getMessage());
         }

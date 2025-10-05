@@ -236,72 +236,66 @@ class AccountingService
             $transactionId = 'RC-' . $accountRecharge->recharge_number . '-' . date('YmdHis');
             $amount = $accountRecharge->recharge_amount;
 
-            // For capital introduction: Debit Asset Account, Credit Equity Account
-            // Debit: Main Account (Asset increases - money coming in)
+            // Get giver account from metadata
+            $giverAccountId = $accountRecharge->metadata['giver_account_id'] ?? null;
+            $giverAccount = null;
+            
+            if ($giverAccountId) {
+                $giverAccount = Account::find($giverAccountId);
+                if (!$giverAccount) {
+                    throw new \Exception('Giver account not found');
+                }
+            }
+
+            // For capital injection from giver account to capital account:
+            // Debit: Capital Account (Asset increases - money coming into the system)
             GeneralLedger::createTransaction(
-                $transactionId . '-ASSET',
+                $transactionId . '-CAPITAL',
                 $accountRecharge->mainAccount,
                 'debit',
                 $amount,
-                "Capital introduction: {$accountRecharge->description}",
+                "Capital injection: {$accountRecharge->description}",
                 'AccountRecharge',
                 $accountRecharge->id,
                 $accountRecharge->approved_by
             );
 
-            // Credit: Equity Account (Owner's capital increases)
-            $equityAccount = Account::where('organization_id', $accountRecharge->mainAccount->organization_id)
-                ->whereHas('accountType', function($query) {
-                    $query->where('category', 'equity');
-                })
-                ->where('name', 'like', '%Capital%')
-                ->first();
+            if ($giverAccount) {
+                // Credit: Giver Account (Liability decreases - money coming from external source)
+                // Giver accounts have negative/credit balance, so crediting reduces the liability
+                GeneralLedger::createTransaction(
+                    $transactionId . '-GIVER',
+                    $giverAccount,
+                    'credit',
+                    $amount,
+                    "Capital injection from external source: {$accountRecharge->description}",
+                    'AccountRecharge',
+                    $accountRecharge->id,
+                    $accountRecharge->approved_by
+                );
+            } else {
+                // Fallback: Credit Equity Account if no giver account specified
+                $equityAccount = Account::where('organization_id', $accountRecharge->mainAccount->organization_id)
+                    ->whereHas('accountType', function($query) {
+                        $query->where('category', 'equity');
+                    })
+                    ->where('name', 'like', '%Capital%')
+                    ->first();
 
-            if (!$equityAccount) {
-                throw new \Exception('Equity account not found for capital introduction');
-            }
-
-            GeneralLedger::createTransaction(
-                $transactionId . '-EQUITY',
-                $equityAccount,
-                'credit',
-                $amount,
-                "Capital introduction: {$accountRecharge->description}",
-                'AccountRecharge',
-                $accountRecharge->id,
-                $accountRecharge->approved_by
-            );
-
-            // If distribution plan exists, distribute to branch accounts
-            if ($accountRecharge->distribution_plan && is_array($accountRecharge->distribution_plan)) {
-                foreach ($accountRecharge->distribution_plan as $distribution) {
-                    $branchAccount = Account::find($distribution['account_id']);
-                    if ($branchAccount && $distribution['amount'] > 0) {
-                        // Debit: Branch Account (Asset increases - money going to branch)
-                        GeneralLedger::createTransaction(
-                            $transactionId . '-DIST-' . $branchAccount->id,
-                            $branchAccount,
-                            'debit',
-                            $distribution['amount'],
-                            "Distribution from capital introduction: {$accountRecharge->recharge_number}",
-                            'AccountRecharge',
-                            $accountRecharge->id,
-                            $accountRecharge->approved_by
-                        );
-
-                        // Credit: Main Account (Asset decreases - money going out to branches)
-                        GeneralLedger::createTransaction(
-                            $transactionId . '-DIST-CREDIT-' . $branchAccount->id,
-                            $accountRecharge->mainAccount,
-                            'credit',
-                            $distribution['amount'],
-                            "Distribution to {$branchAccount->name}",
-                            'AccountRecharge',
-                            $accountRecharge->id,
-                            $accountRecharge->approved_by
-                        );
-                    }
+                if (!$equityAccount) {
+                    throw new \Exception('Equity account not found for capital introduction');
                 }
+
+                GeneralLedger::createTransaction(
+                    $transactionId . '-EQUITY',
+                    $equityAccount,
+                    'credit',
+                    $amount,
+                    "Capital introduction: {$accountRecharge->description}",
+                    'AccountRecharge',
+                    $accountRecharge->id,
+                    $accountRecharge->approved_by
+                );
             }
 
             DB::commit();

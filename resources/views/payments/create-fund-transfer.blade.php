@@ -12,22 +12,28 @@
                         @csrf
                         
                         <div class="space-y-6">
+                            <!-- From Branch -->
+                            <div>
+                                <label for="from_branch_id" class="block text-sm font-medium text-gray-700 mb-2">From Branch</label>
+                                <select name="from_branch_id" id="from_branch_id" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500">
+                                    <option value="">Select source branch</option>
+                                    <option value="hq" {{ old('from_branch_id') == 'hq' ? 'selected' : '' }}>HQ (Main Office)</option>
+                                    @foreach($branches as $branch)
+                                        <option value="{{ $branch->id }}" {{ old('from_branch_id') == $branch->id ? 'selected' : '' }}>
+                                            {{ $branch->name }}{{ $branch->is_hq ? ' (HQ)' : '' }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                @error('from_branch_id')
+                                    <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                                @enderror
+                            </div>
+
                             <!-- From Account -->
                             <div>
                                 <label for="from_account_id" class="block text-sm font-medium text-gray-700 mb-2">From Account</label>
                                 <select name="from_account_id" id="from_account_id" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500">
                                     <option value="">Select source account</option>
-                                    @foreach($accounts as $account)
-                                        <option value="{{ $account->id }}" 
-                                                data-balance="{{ $account->calculated_balance }}"
-                                                {{ old('from_account_id') == $account->id ? 'selected' : '' }}>
-                                            {{ $account->name }} ({{ $account->accountType->name }})
-                                            @if($account->branch)
-                                                - {{ $account->branch->name }}
-                                            @endif
-                                            - Balance: TZS {{ number_format($account->calculated_balance, 2) }}
-                                        </option>
-                                    @endforeach
                                 </select>
                                 <div id="from_account_balance" class="mt-1 text-sm text-gray-600 hidden">
                                     Available Balance: <span id="from_balance_amount">TZS 0.00</span>
@@ -37,19 +43,28 @@
                                 @enderror
                             </div>
 
+                            <!-- To Branch -->
+                            <div>
+                                <label for="to_branch_id" class="block text-sm font-medium text-gray-700 mb-2">To Branch</label>
+                                <select name="to_branch_id" id="to_branch_id" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500">
+                                    <option value="">Select destination branch</option>
+                                    <option value="hq" {{ old('to_branch_id') == 'hq' ? 'selected' : '' }}>HQ (Main Office)</option>
+                                    @foreach($branches as $branch)
+                                        <option value="{{ $branch->id }}" {{ old('to_branch_id') == $branch->id ? 'selected' : '' }}>
+                                            {{ $branch->name }}{{ $branch->is_hq ? ' (HQ)' : '' }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                                @error('to_branch_id')
+                                    <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                                @enderror
+                            </div>
+
                             <!-- To Account -->
                             <div>
                                 <label for="to_account_id" class="block text-sm font-medium text-gray-700 mb-2">To Account</label>
                                 <select name="to_account_id" id="to_account_id" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500">
                                     <option value="">Select destination account</option>
-                                    @foreach($accounts as $account)
-                                        <option value="{{ $account->id }}" {{ old('to_account_id') == $account->id ? 'selected' : '' }}>
-                                            {{ $account->name }} ({{ $account->accountType->name }})
-                                            @if($account->branch)
-                                                - {{ $account->branch->name }}
-                                            @endif
-                                        </option>
-                                    @endforeach
                                 </select>
                                 @error('to_account_id')
                                     <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
@@ -101,10 +116,23 @@
     <script>
         let selectedFromBalance = 0;
         let isValidAmount = false;
+        
+        // Accounts data from server
+        const accountsByBranch = @json($accountsByBranch);
 
-        // Prevent selecting the same account for both from and to
+        // Handle branch selection for source accounts
+        document.getElementById('from_branch_id').addEventListener('change', function() {
+            populateAccounts('from', this.value);
+            validateAmount();
+        });
+
+        // Handle branch selection for destination accounts
+        document.getElementById('to_branch_id').addEventListener('change', function() {
+            populateAccounts('to', this.value);
+        });
+
+        // Handle account selection for source
         document.getElementById('from_account_id').addEventListener('change', function() {
-            const toSelect = document.getElementById('to_account_id');
             const fromValue = this.value;
             const fromBalanceDiv = document.getElementById('from_account_balance');
             const fromBalanceAmount = document.getElementById('from_balance_amount');
@@ -119,36 +147,39 @@
                 fromBalanceDiv.classList.add('hidden');
                 selectedFromBalance = 0;
             }
-            
-            // Prevent selecting same account
-            Array.from(toSelect.options).forEach(option => {
-                if (option.value === fromValue) {
-                    option.disabled = true;
-                    option.style.display = 'none';
-                } else {
-                    option.disabled = false;
-                    option.style.display = 'block';
-                }
-            });
 
             // Re-validate amount
             validateAmount();
         });
 
+        // Handle account selection for destination
         document.getElementById('to_account_id').addEventListener('change', function() {
-            const fromSelect = document.getElementById('from_account_id');
-            const toValue = this.value;
-            
-            Array.from(fromSelect.options).forEach(option => {
-                if (option.value === toValue) {
-                    option.disabled = true;
-                    option.style.display = 'none';
-                } else {
-                    option.disabled = false;
-                    option.style.display = 'block';
-                }
-            });
+            validateAmount();
         });
+
+        // Function to populate accounts based on selected branch
+        function populateAccounts(type, branchId) {
+            const selectElement = document.getElementById(type + '_account_id');
+            const accounts = accountsByBranch[branchId] || [];
+            
+            // Clear existing options
+            selectElement.innerHTML = '<option value="">Select ' + (type === 'from' ? 'source' : 'destination') + ' account</option>';
+            
+            // Add accounts for the selected branch
+            accounts.forEach(account => {
+                const option = document.createElement('option');
+                option.value = account.id;
+                option.setAttribute('data-balance', account.calculated_balance);
+                option.textContent = `${account.name} (${account.account_type.name}) - Balance: TZS ${parseFloat(account.calculated_balance).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                selectElement.appendChild(option);
+            });
+            
+            // Reset balance display for from account
+            if (type === 'from') {
+                document.getElementById('from_account_balance').classList.add('hidden');
+                selectedFromBalance = 0;
+            }
+        }
 
         // Real-time amount validation
         document.getElementById('amount').addEventListener('input', function() {
@@ -162,19 +193,28 @@
             const errorSpan = document.getElementById('amount_error');
             const submitButton = document.getElementById('submit_button');
 
+            const fromBranchId = document.getElementById('from_branch_id').value;
+            const fromAccountId = document.getElementById('from_account_id').value;
+            const toBranchId = document.getElementById('to_branch_id').value;
+            const toAccountId = document.getElementById('to_account_id').value;
+
             if (amountValue <= 0) {
                 showError('Amount must be greater than 0');
                 isValidAmount = false;
             } else if (amountValue > selectedFromBalance) {
                 showError(`Insufficient balance. Available: TZS ${selectedFromBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
                 isValidAmount = false;
+            } else if (fromBranchId && toBranchId && fromAccountId && toAccountId && fromBranchId === toBranchId && fromAccountId === toAccountId) {
+                showError('Source and destination accounts cannot be the same');
+                isValidAmount = false;
             } else {
                 hideError();
                 isValidAmount = true;
             }
 
-            // Enable/disable submit button
-            submitButton.disabled = !isValidAmount || !document.getElementById('from_account_id').value || !document.getElementById('to_account_id').value;
+            // Enable/disable submit button - require all fields to be filled
+            const allFieldsFilled = fromBranchId && fromAccountId && toBranchId && toAccountId && amountValue > 0;
+            submitButton.disabled = !isValidAmount || !allFieldsFilled;
         }
 
         function showError(message) {

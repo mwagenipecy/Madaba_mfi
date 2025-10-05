@@ -164,6 +164,15 @@ class OrganizationSettingsController extends Controller
         $organization = Organization::with(['accounts.accountType', 'accounts.branch', 'branches', 'users'])
             ->findOrFail($user->organization_id);
 
+        // Get only external accounts for mapping dropdown
+        $externalAccounts = $organization->accounts()
+            ->where('account_classification', 'external')
+            ->whereIn('external_account_type', ['receiver', 'giver'])
+            ->with(['accountType', 'branch'])
+            ->orderBy('external_account_type')
+            ->orderBy('name')
+            ->get();
+
         // Get RealAccounts that map to accounts in this organization
         $realAccountsWithMappings = RealAccount::with(['mappedAccounts.accountType', 'mappedAccounts.branch'])
             ->whereHas('mappedAccounts', function($query) use ($user) {
@@ -186,6 +195,7 @@ class OrganizationSettingsController extends Controller
 
         return view('organization-settings.mapped-account-balances', compact(
             'organization',
+            'externalAccounts',
             'realAccountsWithMappings',
             'totalBalance',
             'totalAccounts'
@@ -212,9 +222,11 @@ class OrganizationSettingsController extends Controller
             'mapping_description' => 'nullable|string|max:500',
         ]);
 
-        // Verify the account belongs to the user's organization
+        // Verify the account belongs to the user's organization and is external
         $account = Account::where('id', $validated['account_id'])
             ->where('organization_id', $user->organization_id)
+            ->where('account_classification', 'external')
+            ->whereIn('external_account_type', ['receiver', 'giver'])
             ->firstOrFail();
 
         // Create the real account record first

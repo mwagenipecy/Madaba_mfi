@@ -101,6 +101,9 @@ Route::middleware([
         // Real Account Mapping - Must be before {account} routes
         Route::get('/mapped', [App\Http\Controllers\AccountsController::class, 'mappedAccounts'])->name('mapped');
         
+        // External Accounts - Must be before {account} routes
+        Route::get('/external', [App\Http\Controllers\AccountsController::class, 'externalAccounts'])->name('external');
+        
         // Account enable/disable actions
         Route::post('/{account}/enable', [App\Http\Controllers\AccountsController::class, 'enable'])->name('enable');
         Route::post('/{account}/status-change', [App\Http\Controllers\AccountsController::class, 'disable'])->name('status-change');

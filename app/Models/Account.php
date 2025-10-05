@@ -27,6 +27,8 @@ class Account extends Model
         'currency',
         'description',
         'status',
+        'account_classification',
+        'external_account_type',
         'opening_date',
         'last_transaction_date',
         'metadata',
@@ -270,5 +272,93 @@ class Account extends Model
         }
         
         return 'Not Mapped';
+    }
+
+    /**
+     * Check if this is an external account
+     */
+    public function getIsExternalAttribute(): bool
+    {
+        return $this->account_classification === 'external';
+    }
+
+    /**
+     * Check if this is an internal account
+     */
+    public function getIsInternalAttribute(): bool
+    {
+        return $this->account_classification === 'internal';
+    }
+
+    /**
+     * Check if this is a receiver account (for external accounts)
+     */
+    public function getIsReceiverAttribute(): bool
+    {
+        return $this->is_external && $this->external_account_type === 'receiver';
+    }
+
+    /**
+     * Check if this is a giver account (for external accounts)
+     */
+    public function getIsGiverAttribute(): bool
+    {
+        return $this->is_external && $this->external_account_type === 'giver';
+    }
+
+    /**
+     * Get account classification badge color
+     */
+    public function getAccountClassificationBadgeColorAttribute(): string
+    {
+        return match($this->account_classification) {
+            'internal' => 'bg-blue-100 text-blue-800',
+            'external' => 'bg-green-100 text-green-800',
+            default => 'bg-gray-100 text-gray-800',
+        };
+    }
+
+    /**
+     * Get external account type badge color
+     */
+    public function getExternalAccountTypeBadgeColorAttribute(): string
+    {
+        return match($this->external_account_type) {
+            'receiver' => 'bg-green-100 text-green-800',
+            'giver' => 'bg-orange-100 text-orange-800',
+            default => 'bg-gray-100 text-gray-800',
+        };
+    }
+
+    /**
+     * Scope to get internal accounts
+     */
+    public function scopeInternal($query)
+    {
+        return $query->where('account_classification', 'internal');
+    }
+
+    /**
+     * Scope to get external accounts
+     */
+    public function scopeExternal($query)
+    {
+        return $query->where('account_classification', 'external');
+    }
+
+    /**
+     * Scope to get receiver accounts
+     */
+    public function scopeReceiver($query)
+    {
+        return $query->where('external_account_type', 'receiver');
+    }
+
+    /**
+     * Scope to get giver accounts
+     */
+    public function scopeGiver($query)
+    {
+        return $query->where('external_account_type', 'giver');
     }
 }

@@ -95,6 +95,34 @@
                                placeholder="0.00">
                     </div>
 
+                    <!-- Account Classification -->
+                    <div>
+                        <label for="account_classification" class="block text-sm font-medium text-gray-700 mb-2">Account Classification</label>
+                        <select id="account_classification" name="account_classification" required
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                onchange="toggleExternalAccountType()">
+                            <option value="internal" selected>Internal Account</option>
+                            <option value="external">External Account</option>
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">
+                            Internal: For organization's own accounts. External: For client/vendor accounts.
+                        </p>
+                    </div>
+
+                    <!-- External Account Type (only shown for external accounts) -->
+                    <div id="external_account_type_field" style="display: none;">
+                        <label for="external_account_type" class="block text-sm font-medium text-gray-700 mb-2">External Account Type</label>
+                        <select id="external_account_type" name="external_account_type"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                            <option value="">Select external account type</option>
+                            <option value="receiver">Receiver (Money comes in)</option>
+                            <option value="giver">Giver (Money goes out)</option>
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">
+                            Receiver: Client accounts that receive money. Giver: Vendor accounts that give money.
+                        </p>
+                    </div>
+
                 </div>
 
                 <!-- Description -->
@@ -128,4 +156,21 @@
             </form>
         </div>
     </div>
+
+    <script>
+        function toggleExternalAccountType() {
+            const accountClassification = document.getElementById('account_classification');
+            const externalAccountTypeField = document.getElementById('external_account_type_field');
+            const externalAccountType = document.getElementById('external_account_type');
+            
+            if (accountClassification.value === 'external') {
+                externalAccountTypeField.style.display = 'block';
+                externalAccountType.required = true;
+            } else {
+                externalAccountTypeField.style.display = 'none';
+                externalAccountType.required = false;
+                externalAccountType.value = '';
+            }
+        }
+    </script>
 </x-app-shell>

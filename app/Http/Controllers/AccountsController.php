@@ -23,6 +23,7 @@ class AccountsController extends Controller
         $activeAccounts = Account::where('organization_id', $organizationId)->where('status', 'active')->count();
         $mainAccounts = Account::where('organization_id', $organizationId)->whereNull('branch_id')->count();
         $branchAccounts = Account::where('organization_id', $organizationId)->whereNotNull('branch_id')->count();
+        $externalAccounts = Account::where('organization_id', $organizationId)->where('account_classification', 'external')->count();
         
         // Get latest transactions from general ledger
         $latestTransactions = \App\Models\GeneralLedger::where('organization_id', $organizationId)
@@ -32,7 +33,7 @@ class AccountsController extends Controller
             ->limit(10)
             ->get();
         
-        return view('accounts.index', compact('totalAccounts', 'activeAccounts', 'mainAccounts', 'branchAccounts', 'latestTransactions'));
+        return view('accounts.index', compact('totalAccounts', 'activeAccounts', 'mainAccounts', 'branchAccounts', 'externalAccounts', 'latestTransactions'));
     }
 
     /**
@@ -257,6 +258,8 @@ class AccountsController extends Controller
             'currency' => 'required|string|size:3',
             'description' => 'nullable|string',
             'status' => 'required|in:active,inactive,suspended,closed',
+            'account_classification' => 'required|in:internal,external',
+            'external_account_type' => 'nullable|required_if:account_classification,external|in:receiver,giver',
         ]);
 
         // Automatically set account_type_id based on parent account
@@ -265,6 +268,11 @@ class AccountsController extends Controller
 
         // Enforce default organization to authenticated user's organization
         $validated['organization_id'] = auth()->user()->organization_id ?? $validated['organization_id'];
+
+        // Set external_account_type to null for internal accounts
+        if ($validated['account_classification'] === 'internal') {
+            $validated['external_account_type'] = null;
+        }
 
         // Ensure selected branch belongs to organization if provided
         if (!empty($validated['branch_id'])) {
@@ -276,7 +284,12 @@ class AccountsController extends Controller
 
         // Generate unique account number
         $accountType = AccountType::find($validated['account_type_id']);
-        $validated['account_number'] = $this->generateAccountNumber($accountType->code, $validated['organization_id'], $validated['branch_id']);
+        $validated['account_number'] = $this->generateAccountNumber(
+            $accountType->code, 
+            $validated['organization_id'], 
+            $validated['branch_id'],
+            $validated['account_classification']
+        );
         $validated['balance'] = $validated['opening_balance'];
         $validated['opening_date'] = now();
 
@@ -551,9 +564,10 @@ class AccountsController extends Controller
     /**
      * Generate a unique account number
      */
-    private function generateAccountNumber(string $accountTypeCode, int $organizationId, ?int $branchId = null): string
+    private function generateAccountNumber(string $accountTypeCode, int $organizationId, ?int $branchId = null, string $accountClassification = 'internal'): string
     {
-        $prefix = strtoupper($accountTypeCode);
+        // Use "Ext" prefix for external accounts, otherwise use account type code
+        $prefix = $accountClassification === 'external' ? 'EXT' : strtoupper($accountTypeCode);
         $orgCode = str_pad($organizationId, 3, '0', STR_PAD_LEFT);
         $branchCode = $branchId ? str_pad($branchId, 3, '0', STR_PAD_LEFT) : '000';
         $timestamp = now()->format('Ymd');
@@ -659,6 +673,58 @@ class AccountsController extends Controller
         $totalBalance = $mappedAccounts->sum('balance');
 
         return view('accounts.mapped-accounts', compact('mappedAccounts', 'totalBalance'));
+    }
+
+    /**
+     * Display external accounts with balances and transactions
+     */
+    public function externalAccounts()
+    {
+        $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
+        
+        // Get external accounts grouped by type
+        $externalAccounts = Account::where('organization_id', $organizationId)
+            ->where('account_classification', 'external')
+            ->with(['accountType', 'branch'])
+            ->orderBy('external_account_type')
+            ->orderBy('name')
+            ->get()
+            ->groupBy('external_account_type');
+
+        // Get transactions for external accounts
+        $externalAccountIds = Account::where('organization_id', $organizationId)
+            ->where('account_classification', 'external')
+            ->pluck('id');
+
+        $latestTransactions = \App\Models\GeneralLedger::whereIn('account_id', $externalAccountIds)
+            ->with(['account.accountType', 'branch'])
+            ->orderBy('transaction_date', 'desc')
+            ->orderBy('created_at', 'desc')
+            ->limit(20)
+            ->get();
+
+        // Calculate totals
+        $totalExternalAccounts = $externalAccountIds->count();
+        $totalExternalBalance = Account::where('organization_id', $organizationId)
+            ->where('account_classification', 'external')
+            ->sum('balance');
+        
+        $receiverAccounts = $externalAccounts->get('receiver', collect());
+        $giverAccounts = $externalAccounts->get('giver', collect());
+        
+        $receiverBalance = $receiverAccounts->sum('balance');
+        $giverBalance = $giverAccounts->sum('balance');
+
+        return view('accounts.external', compact(
+            'externalAccounts',
+            'latestTransactions',
+            'totalExternalAccounts',
+            'totalExternalBalance',
+            'receiverAccounts',
+            'giverAccounts',
+            'receiverBalance',
+            'giverBalance'
+        ));
     }
 
     /**

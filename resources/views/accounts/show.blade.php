@@ -44,6 +44,24 @@
                                         </span>
                                     </dd>
                                 </div>
+                                <div>
+                                    <dt class="text-sm font-medium text-gray-600">Account Classification</dt>
+                                    <dd class="text-sm">
+                                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $account->account_classification_badge_color }}">
+                                            {{ ucfirst($account->account_classification) }}
+                                        </span>
+                                    </dd>
+                                </div>
+                                @if($account->is_external && $account->external_account_type)
+                                    <div>
+                                        <dt class="text-sm font-medium text-gray-600">External Account Type</dt>
+                                        <dd class="text-sm">
+                                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $account->external_account_type_badge_color }}">
+                                                {{ ucfirst($account->external_account_type) }}
+                                            </span>
+                                        </dd>
+                                    </div>
+                                @endif
                             </dl>
                         </div>
 
