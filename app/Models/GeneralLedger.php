@@ -175,9 +175,21 @@ class GeneralLedger extends Model
         ?int $referenceId = null,
         ?int $approvedBy = null
     ): self {
+        // Get the LATEST balance from the ledger to ensure we're adding to the correct balance
+        // This prevents issues where multiple transactions happen and the account balance might be stale
+        $lastTransaction = self::where('account_id', $account->id)
+            ->orderBy('transaction_date', 'desc')
+            ->orderBy('id', 'desc')
+            ->first();
+        
+        // Use the balance_after from the last transaction, or fall back to account balance
+        $currentBalance = $lastTransaction ? $lastTransaction->balance_after : ($account->current_balance ?? $account->balance ?? 0);
+        
+        // Refresh account to ensure we have the latest data
+        $account->refresh();
+        
         // Calculate new balance based on account type and transaction type
         $accountType = $account->accountType;
-        $currentBalance = $account->current_balance ?? $account->balance;
         
         // For assets and expenses: debit increases, credit decreases
         // For liabilities, equity, and income: debit decreases, credit increases

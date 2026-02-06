@@ -8,7 +8,58 @@
                         <p class="text-gray-600 mt-1">Inject capital into the system from external giver accounts to main capital accounts</p>
                     </div>
 
-                    <form method="POST" action="{{ route('payments.account-recharge.store') }}">
+                    <!-- Success/Error Messages -->
+                    @if(session('success'))
+                        <div class="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                            <div class="flex">
+                                <svg class="w-5 h-5 text-green-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                <p class="text-sm text-green-800">{{ session('success') }}</p>
+                            </div>
+                        </div>
+                    @endif
+
+                    @if(session('error'))
+                        <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                            <div class="flex">
+                                <svg class="w-5 h-5 text-red-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                <p class="text-sm text-red-800">{{ session('error') }}</p>
+                            </div>
+                        </div>
+                    @endif
+
+                    @if($giverAccounts && $giverAccounts->count() == 0)
+                        <div class="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <div class="flex">
+                                <svg class="w-5 h-5 text-yellow-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                                </svg>
+                                <div>
+                                    <p class="text-sm text-yellow-800 font-medium">No Giver Accounts Available</p>
+                                    <p class="text-sm text-yellow-700 mt-1">You need to create external accounts with "giver" type before you can create account recharges.</p>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
+
+                    @if($capitalAccounts && $capitalAccounts->count() == 0)
+                        <div class="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <div class="flex">
+                                <svg class="w-5 h-5 text-yellow-400 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                                </svg>
+                                <div>
+                                    <p class="text-sm text-yellow-800 font-medium">No Capital Accounts Available</p>
+                                    <p class="text-sm text-yellow-700 mt-1">You need to create main organization accounts (with main_category metadata) before you can create account recharges.</p>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
+
+                    <form method="POST" action="{{ route('payments.account-recharge.store') }}" id="rechargeForm">
                         @csrf
                         
                         <div class="space-y-6">
@@ -101,7 +152,8 @@
                             <a href="{{ route('payments.index') }}" class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg font-medium transition-colors">
                                 Cancel
                             </a>
-                            <button type="submit" id="submit_button" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed">
+                            <button type="submit" id="submit_button" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed" 
+                                    @if(!$giverAccounts || $giverAccounts->count() == 0 || !$capitalAccounts || $capitalAccounts->count() == 0) disabled @endif>
                                 Submit Capital Injection Request
                             </button>
                         </div>
@@ -146,15 +198,25 @@
             validateAmount();
         });
 
+        // Description validation
+        const descriptionInput = document.getElementById('description');
+        if (descriptionInput) {
+            descriptionInput.addEventListener('input', function() {
+                validateAmount();
+            });
+        }
+
         function validateAmount() {
             const amountInput = document.getElementById('recharge_amount');
             const amountValue = parseFloat(amountInput.value) || 0;
             const validationDiv = document.getElementById('amount_validation');
             const errorSpan = document.getElementById('amount_error');
             const submitButton = document.getElementById('submit_button');
+            const descriptionInput = document.getElementById('description');
 
             const giverAccountId = document.getElementById('giver_account_id').value;
             const capitalAccountId = document.getElementById('capital_account_id').value;
+            const descriptionValue = descriptionInput ? descriptionInput.value.trim() : '';
 
             if (amountValue <= 0) {
                 showError('Amount must be greater than 0');
@@ -167,8 +229,8 @@
                 isValidAmount = true;
             }
 
-            // Enable/disable submit button
-            const allFieldsFilled = giverAccountId && capitalAccountId && amountValue > 0;
+            // Enable/disable submit button - check all required fields
+            const allFieldsFilled = giverAccountId && capitalAccountId && amountValue > 0 && descriptionValue.length > 0;
             submitButton.disabled = !isValidAmount || !allFieldsFilled;
         }
 
@@ -186,5 +248,24 @@
 
         // Initial validation
         validateAmount();
+
+        // Form submission handler - allow server-side validation to catch errors
+        document.getElementById('rechargeForm').addEventListener('submit', function(e) {
+            const submitButton = document.getElementById('submit_button');
+            const giverAccountId = document.getElementById('giver_account_id').value;
+            const capitalAccountId = document.getElementById('capital_account_id').value;
+            const amountValue = parseFloat(document.getElementById('recharge_amount').value) || 0;
+            const descriptionValue = document.getElementById('description').value.trim();
+
+            // Basic client-side check - but don't prevent if JavaScript validation fails
+            // Server-side validation will catch any issues
+            if (!giverAccountId || !capitalAccountId || amountValue <= 0 || !descriptionValue) {
+                // Show error but let server handle it
+                console.warn('Form validation warning - server will validate');
+            }
+
+            // Don't prevent submission - let server handle validation
+            // This ensures form can submit even if JS validation has issues
+        });
     </script>
 </x-app-shell>

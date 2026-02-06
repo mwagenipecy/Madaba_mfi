@@ -186,10 +186,30 @@
                             <h2 class="text-lg font-semibold text-gray-900 mb-4">Fees and Charges</h2>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
-                                    <label for="processing_fee" class="block text-sm font-medium text-gray-700 mb-2">Processing Fee</label>
-                                    <input type="number" step="0.01" name="processing_fee" id="processing_fee" 
-                                           value="{{ old('processing_fee', $loanProduct->processing_fee) }}"
-                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                    <label for="processing_fee_type" class="block text-sm font-medium text-gray-700 mb-2">Processing Fee Type</label>
+                                    <select name="processing_fee_type" id="processing_fee_type" 
+                                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                        <option value="fixed" {{ old('processing_fee_type', $loanProduct->processing_fee_type ?? 'fixed') == 'fixed' ? 'selected' : '' }}>Fixed Amount</option>
+                                        <option value="percent" {{ old('processing_fee_type', $loanProduct->processing_fee_type ?? 'fixed') == 'percent' ? 'selected' : '' }}>Percentage (%)</option>
+                                    </select>
+                                    @error('processing_fee_type')
+                                        <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                                    @enderror
+                                </div>
+
+                                <div>
+                                    <label for="processing_fee" id="processing_fee_label" class="block text-sm font-medium text-gray-700 mb-2">Processing Fee</label>
+                                    <div class="relative">
+                                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none" id="processing_fee_prefix">
+                                            <span class="text-gray-500 sm:text-sm">TZS</span>
+                                        </div>
+                                        <input type="number" step="0.01" name="processing_fee" id="processing_fee" 
+                                               value="{{ old('processing_fee', $loanProduct->processing_fee) }}"
+                                               class="w-full pl-12 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                        <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none hidden" id="processing_fee_suffix">
+                                            <span class="text-gray-500 sm:text-sm">%</span>
+                                        </div>
+                                    </div>
                                     @error('processing_fee')
                                         <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                                     @enderror
@@ -306,6 +326,38 @@
             
             // Initial check
             toggleCollateralRatio();
+
+            // Handle processing fee type change
+            const processingFeeType = document.getElementById('processing_fee_type');
+            if (processingFeeType) {
+                const feeInput = document.getElementById('processing_fee');
+                const feeLabel = document.getElementById('processing_fee_label');
+                const feePrefix = document.getElementById('processing_fee_prefix');
+                const feeSuffix = document.getElementById('processing_fee_suffix');
+                
+                function updateProcessingFeeDisplay() {
+                    if (processingFeeType.value === 'percent') {
+                        feeLabel.textContent = 'Processing Fee (%)';
+                        feePrefix.classList.add('hidden');
+                        feeSuffix.classList.remove('hidden');
+                        feeInput.classList.remove('pl-12');
+                        feeInput.classList.add('pr-8');
+                        feeInput.max = 100;
+                        feeInput.placeholder = '0.00';
+                    } else {
+                        feeLabel.textContent = 'Processing Fee';
+                        feePrefix.classList.remove('hidden');
+                        feeSuffix.classList.add('hidden');
+                        feeInput.classList.add('pl-12');
+                        feeInput.classList.remove('pr-8');
+                        feeInput.removeAttribute('max');
+                        feeInput.placeholder = '0.00';
+                    }
+                }
+                
+                processingFeeType.addEventListener('change', updateProcessingFeeDisplay);
+                updateProcessingFeeDisplay(); // Initial state
+            }
         });
     </script>
 </x-app-shell>

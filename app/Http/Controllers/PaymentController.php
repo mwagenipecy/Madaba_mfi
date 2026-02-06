@@ -97,6 +97,8 @@ class PaymentController extends Controller
      */
     public function storeFundTransfer(Request $request)
     {
+
+        
         $request->validate([
             'from_branch_id' => 'required|string',
             'from_account_id' => 'required|exists:accounts,id',
@@ -118,6 +120,8 @@ class PaymentController extends Controller
             'description.required' => 'Transfer description is required.',
             'description.max' => 'Description cannot exceed 500 characters.',
         ]);
+
+
 
         try {
             $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
@@ -218,7 +222,7 @@ class PaymentController extends Controller
                 ]);
             }
 
-            return redirect()->route('payments')->with('success', 'Fund transfer request submitted successfully. It will be reviewed for approval before execution.');
+            return redirect()->route('payments.index')->with('success', 'Fund transfer request submitted successfully. It will be reviewed for approval before execution.');
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'An error occurred while creating the fund transfer: ' . $e->getMessage());
         }
@@ -237,7 +241,7 @@ class PaymentController extends Controller
             ->where('status', 'active')
             ->where('account_classification', 'external')
             ->where('external_account_type', 'giver')
-            ->whereNull('branch_id') // Organization-level accounts only
+            //->whereNull('branch_id') // Organization-level accounts only
             ->with(['accountType'])
             ->get();
 
@@ -253,7 +257,7 @@ class PaymentController extends Controller
                 ->where('status', 'active')
                 ->where('account_classification', 'internal')
                 ->where('account_type_id', $accountType->id)
-                ->whereNull('branch_id')
+              //  ->whereNull('branch_id') // Must be organization-level accounts
                 ->whereJsonContains('metadata->account_type', 'main_category')
                 ->with(['accountType'])
                 ->first();
@@ -316,7 +320,7 @@ class PaymentController extends Controller
                 ->where('organization_id', $organizationId)
                 ->where('status', 'active')
                 ->where('account_classification', 'internal')
-                ->whereNull('branch_id')
+              //  ->whereNull('branch_id')
                 ->first();
 
             if (!$giverAccount) {
@@ -374,7 +378,7 @@ class PaymentController extends Controller
                 ]);
             }
 
-            return redirect()->route('payments')->with('success', 'Capital injection request submitted successfully. It will be reviewed for approval before execution.');
+            return redirect()->route('payments.index')->with('success', 'Capital injection request submitted successfully. It will be reviewed for approval before execution.');
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'An error occurred while creating the account recharge: ' . $e->getMessage());
         }

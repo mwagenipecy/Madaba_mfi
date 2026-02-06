@@ -258,6 +258,67 @@
             </div>
             @endif
 
+            <!-- KYC Documents -->
+            @if($client->kyc_documents && count($client->kyc_documents) > 0)
+            <div class="bg-white rounded-lg shadow-sm p-6 lg:col-span-2">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">KYC Documents</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    @foreach($client->kyc_documents as $document)
+                        <div class="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+                            <div class="flex items-start justify-between mb-2">
+                                <div class="flex-1">
+                                    <h4 class="font-medium text-gray-900 capitalize">{{ str_replace('_', ' ', $document['type'] ?? 'Document') }}</h4>
+                                    @if(isset($document['description']) && $document['description'])
+                                        <p class="text-sm text-gray-600 mt-1">{{ $document['description'] }}</p>
+                                    @endif
+                                </div>
+                                <span class="px-2 py-1 rounded-full text-xs font-medium 
+                                    {{ ($document['status'] ?? 'pending') === 'approved' ? 'bg-green-100 text-green-800' : 
+                                       (($document['status'] ?? 'pending') === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800') }}">
+                                    {{ ucfirst($document['status'] ?? 'pending') }}
+                                </span>
+                            </div>
+                            
+                            <div class="mt-3 space-y-2">
+                                <div class="flex items-center text-sm text-gray-600">
+                                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                                    </svg>
+                                    <span class="truncate">{{ $document['name'] ?? 'Unknown' }}</span>
+                                </div>
+                                
+                                @if(isset($document['size']))
+                                    <div class="text-xs text-gray-500">
+                                        {{ number_format($document['size'] / 1024, 2) }} KB
+                                    </div>
+                                @endif
+                                
+                                @if(isset($document['uploaded_at']))
+                                    <div class="text-xs text-gray-500">
+                                        Uploaded: {{ \Carbon\Carbon::parse($document['uploaded_at'])->format('M d, Y') }}
+                                    </div>
+                                @endif
+                                
+                                <div class="mt-3 flex space-x-2">
+                                    @php
+                                        $fileUrl = asset('storage/' . $document['path']);
+                                    @endphp
+                                    <a href="{{ $fileUrl }}" target="_blank" 
+                                       class="flex-1 bg-green-600 hover:bg-green-700 text-white text-center px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                                        View
+                                    </a>
+                                    <a href="{{ $fileUrl }}" download="{{ $document['name'] ?? 'document' }}" 
+                                       class="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-center px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                                        Download
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+            @endif
+
             <!-- Additional Information -->
             @if($client->notes || $client->business_description)
             <div class="bg-white rounded-lg shadow-sm p-6 lg:col-span-2">

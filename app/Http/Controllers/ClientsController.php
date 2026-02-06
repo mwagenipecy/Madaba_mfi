@@ -8,6 +8,7 @@ use App\Models\Branch;
 use App\Models\SystemLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 
 class ClientsController extends Controller
 {
@@ -95,7 +96,8 @@ class ClientsController extends Controller
             return redirect()->route('dashboard')->with('error', 'You must be assigned to an organization to create clients.');
         }
         
-        $request->validate([
+        // Prepare validation rules based on client type
+        $rules = [
             'client_type' => 'required|in:individual,group,business',
             'branch_id' => 'nullable|exists:branches,id',
             
@@ -107,45 +109,63 @@ class ClientsController extends Controller
             'gender' => 'required_if:client_type,individual|in:male,female,other',
             'national_id' => 'nullable|string|max:50|unique:clients,national_id',
             'passport_number' => 'nullable|string|max:50|unique:clients,passport_number',
-            
-            // Business/Group fields
-            'business_name' => 'required_if:client_type,business,group|string|max:255|min:2',
-            'business_registration_number' => 'nullable|string|max:100|unique:clients,business_registration_number',
-            'business_type' => 'required_if:client_type,business,group|in:sole_proprietorship,partnership,corporation,cooperative,ngo,other',
-            
-            // Contact information
-            'phone_number' => 'required|string|max:20|min:10|unique:clients,phone_number',
-            'secondary_phone' => 'nullable|string|max:20|min:10',
-            'email' => 'nullable|email|max:255|unique:clients,email',
-            'physical_address' => 'required|string|min:10|max:500',
-            'city' => 'required|string|max:100|min:2',
-            'region' => 'required|string|max:100|min:2',
-            'country' => 'nullable|string|max:100',
-            'postal_code' => 'nullable|string|max:20',
-            
-            // Financial information
-            'monthly_income' => 'nullable|numeric|min:0|max:999999999.99',
-            'income_source' => 'nullable|string|max:255',
-            'employer_name' => 'nullable|string|max:255',
-            'employment_address' => 'nullable|string|max:500',
-            'bank_name' => 'nullable|string|max:255',
-            'bank_account_number' => 'nullable|string|max:100',
-            
-            // Emergency contact
-            'emergency_contact_name' => 'nullable|string|max:255|min:2',
-            'emergency_contact_phone' => 'nullable|string|max:20|min:10',
-            'emergency_contact_relationship' => 'nullable|string|max:100',
-            
-            // Additional information
-            'marital_status' => 'nullable|in:single,married,divorced,widowed',
-            'dependents' => 'nullable|integer|min:0|max:50',
-            'occupation' => 'nullable|string|max:255',
-            'business_description' => 'nullable|string|max:1000',
-            'years_in_business' => 'nullable|integer|min:0|max:100',
-            'annual_turnover' => 'nullable|numeric|min:0|max:9999999999.99',
-            
-            'notes' => 'nullable|string|max:1000',
-        ], [
+        ];
+
+        // Add business/group fields validation only if not individual
+        if ($request->client_type !== 'individual') {
+            $rules['business_name'] = 'required|string|max:255|min:2';
+            $rules['business_type'] = 'required|in:sole_proprietorship,partnership,corporation,cooperative,ngo,other';
+        } else {
+            // For individual, make these nullable to avoid validation errors
+            $rules['business_name'] = 'nullable|string|max:255';
+            $rules['business_type'] = 'nullable|in:sole_proprietorship,partnership,corporation,cooperative,ngo,other';
+        }
+        
+        $rules['business_registration_number'] = 'nullable|string|max:100|unique:clients,business_registration_number';
+        
+        // Contact information
+        $rules['phone_number'] = 'required|string|max:20|min:10|unique:clients,phone_number';
+        $rules['secondary_phone'] = 'nullable|string|max:20|min:10';
+        $rules['email'] = 'nullable|email|max:255|unique:clients,email';
+        $rules['physical_address'] = 'required|string|min:10|max:500';
+        $rules['city'] = 'required|string|max:100|min:2';
+        $rules['region'] = 'required|string|max:100|min:2';
+        $rules['country'] = 'nullable|string|max:100';
+        $rules['postal_code'] = 'nullable|string|max:20';
+        
+        // Financial information
+        $rules['monthly_income'] = 'nullable|numeric|min:0|max:999999999.99';
+        $rules['income_source'] = 'nullable|string|max:255';
+        $rules['employer_name'] = 'nullable|string|max:255';
+        $rules['employment_address'] = 'nullable|string|max:500';
+        $rules['bank_name'] = 'nullable|string|max:255';
+        $rules['bank_account_number'] = 'nullable|string|max:100';
+        
+        // Emergency contact
+        $rules['emergency_contact_name'] = 'nullable|string|max:255|min:2';
+        $rules['emergency_contact_phone'] = 'nullable|string|max:20|min:10';
+        $rules['emergency_contact_relationship'] = 'nullable|string|max:100';
+        
+        // Additional information
+        $rules['marital_status'] = 'nullable|in:single,married,divorced,widowed';
+        $rules['dependents'] = 'nullable|integer|min:0|max:50';
+        $rules['occupation'] = 'nullable|string|max:255';
+        $rules['business_description'] = 'nullable|string|max:1000';
+        $rules['years_in_business'] = 'nullable|integer|min:0|max:100';
+        $rules['annual_turnover'] = 'nullable|numeric|min:0|max:9999999999.99';
+        $rules['notes'] = 'nullable|string|max:1000';
+        
+        // KYC Documents validation - only validate if files are uploaded
+        if ($request->hasFile('kyc_documents')) {
+            $rules['kyc_documents'] = 'array';
+            $rules['kyc_documents.*'] = 'file|mimes:pdf,jpg,jpeg,png,doc,docx|max:10240'; // 10MB max per file
+            $rules['kyc_document_types'] = 'required|array|size:' . count($request->file('kyc_documents'));
+            $rules['kyc_document_types.*'] = 'required|string|max:255';
+            $rules['kyc_document_descriptions'] = 'nullable|array';
+            $rules['kyc_document_descriptions.*'] = 'nullable|string|max:1000';
+        }
+
+        $request->validate($rules, [
             'client_type.required' => 'Please select a client type.',
             'client_type.in' => 'Invalid client type selected.',
             'branch_id.exists' => 'Selected branch does not exist or does not belong to your organization.',
@@ -234,6 +254,64 @@ class ClientsController extends Controller
             'kyc_status' => 'pending',
         ]);
 
+        // Handle KYC document uploads with compression
+        $kycDocuments = [];
+        if ($request->hasFile('kyc_documents')) {
+            $documentTypes = $request->input('kyc_document_types', []);
+            $documentDescriptions = $request->input('kyc_document_descriptions', []);
+            
+            foreach ($request->file('kyc_documents') as $index => $file) {
+                if ($file && $file->isValid()) {
+                    $originalSize = $file->getSize();
+                    $mimeType = $file->getMimeType();
+                    $filename = time() . '_' . uniqid() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientOriginalName());
+                    $extension = $file->getClientOriginalExtension();
+                    
+                    // Compress images if they are image files
+                    if (strpos($mimeType, 'image/') === 0 && in_array(strtolower($extension), ['jpg', 'jpeg', 'png'])) {
+                        $path = $this->compressAndStoreImage($file, $filename, 'client_kyc_documents');
+                        $finalSize = filesize(storage_path('app/public/' . $path));
+                    } else {
+                        // For non-image files, store as-is
+                        $path = $file->storeAs('client_kyc_documents', $filename, 'public');
+                        $finalSize = filesize(storage_path('app/public/' . $path));
+                    }
+                    
+                    $kycDocuments[] = [
+                        'id' => uniqid(),
+                        'name' => $file->getClientOriginalName(),
+                        'type' => $documentTypes[$index] ?? 'other',
+                        'description' => $documentDescriptions[$index] ?? null,
+                        'filename' => $filename,
+                        'path' => $path,
+                        'size' => $finalSize,
+                        'original_size' => $originalSize,
+                        'mime_type' => $mimeType,
+                        'uploaded_by' => auth()->id(),
+                        'uploaded_at' => now()->toISOString(),
+                        'status' => 'pending'
+                    ];
+                }
+            }
+            
+            // Update client with KYC documents
+            if (!empty($kycDocuments)) {
+                $client->update(['kyc_documents' => $kycDocuments]);
+                
+                // Log document uploads
+                SystemLog::log(
+                    'KYC documents uploaded',
+                    'Uploaded ' . count($kycDocuments) . ' KYC document(s) for client ' . $client->client_number,
+                    'info',
+                    $client,
+                    Auth::id(),
+                    ['uploaded_documents' => array_map(function($doc) {
+                        return $doc['name'] ?? 'Unknown';
+                    }, $kycDocuments)]
+                );
+            }
+        }
+
         // Log the client creation
         SystemLog::log(
             'Client created',
@@ -273,7 +351,13 @@ class ClientsController extends Controller
      */
     public function update(Request $request, Client $client)
     {
-        $request->validate([
+        // Ensure user can only update clients from their organization
+        if ($client->organization_id !== Auth::user()->organization_id) {
+            abort(403, 'Unauthorized access to client.');
+        }
+        
+        // Prepare validation rules
+        $rules = [
             'client_type' => 'required|in:individual,group,business',
             'organization_id' => 'required|exists:organizations,id',
             'branch_id' => 'nullable|exists:branches,id',
@@ -286,54 +370,212 @@ class ClientsController extends Controller
             'gender' => 'required_if:client_type,individual|in:male,female,other',
             'national_id' => 'nullable|string|max:50',
             'passport_number' => 'nullable|string|max:50',
-            
-            // Business/Group fields
-            'business_name' => 'required_if:client_type,business,group|string|max:255',
-            'business_registration_number' => 'nullable|string|max:100',
-            'business_type' => 'required_if:client_type,business,group|in:sole_proprietorship,partnership,corporation,cooperative,ngo,other',
-            
-            // Contact information
-            'phone_number' => 'required|string|max:20',
-            'secondary_phone' => 'nullable|string|max:20',
-            'email' => 'nullable|email|max:255',
-            'physical_address' => 'required|string',
-            'city' => 'required|string|max:100',
-            'region' => 'required|string|max:100',
-            'country' => 'nullable|string|max:100',
-            'postal_code' => 'nullable|string|max:20',
-            
-            // Financial information
-            'monthly_income' => 'nullable|numeric|min:0',
-            'income_source' => 'nullable|string|max:255',
-            'employer_name' => 'nullable|string|max:255',
-            'employment_address' => 'nullable|string',
-            'bank_name' => 'nullable|string|max:255',
-            'bank_account_number' => 'nullable|string|max:100',
-            
-            // Emergency contact
-            'emergency_contact_name' => 'nullable|string|max:255',
-            'emergency_contact_phone' => 'nullable|string|max:20',
-            'emergency_contact_relationship' => 'nullable|string|max:100',
-            
-            // Additional information
-            'marital_status' => 'nullable|in:single,married,divorced,widowed',
-            'dependents' => 'nullable|integer|min:0',
-            'occupation' => 'nullable|string|max:255',
-            'business_description' => 'nullable|string',
-            'years_in_business' => 'nullable|integer|min:0',
-            'annual_turnover' => 'nullable|numeric|min:0',
-            
-            'notes' => 'nullable|string',
-        ]);
+        ];
 
-        $client->update($request->all());
+        // Add business/group fields validation only if not individual
+        if ($request->client_type !== 'individual') {
+            $rules['business_name'] = 'required|string|max:255';
+            $rules['business_type'] = 'required|in:sole_proprietorship,partnership,corporation,cooperative,ngo,other';
+        } else {
+            // For individual, make these nullable to avoid validation errors
+            $rules['business_name'] = 'nullable|string|max:255';
+            $rules['business_type'] = 'nullable|in:sole_proprietorship,partnership,corporation,cooperative,ngo,other';
+        }
+        
+        $rules['business_registration_number'] = 'nullable|string|max:100';
+        
+        // Contact information
+        $rules['phone_number'] = 'required|string|max:20';
+        $rules['secondary_phone'] = 'nullable|string|max:20';
+        $rules['email'] = 'nullable|email|max:255';
+        $rules['physical_address'] = 'required|string';
+        $rules['city'] = 'required|string|max:100';
+        $rules['region'] = 'required|string|max:100';
+        $rules['country'] = 'nullable|string|max:100';
+        $rules['postal_code'] = 'nullable|string|max:20';
+        
+        // Financial information
+        $rules['monthly_income'] = 'nullable|numeric|min:0';
+        $rules['income_source'] = 'nullable|string|max:255';
+        $rules['employer_name'] = 'nullable|string|max:255';
+        $rules['employment_address'] = 'nullable|string';
+        $rules['bank_name'] = 'nullable|string|max:255';
+        $rules['bank_account_number'] = 'nullable|string|max:100';
+        
+        // Emergency contact
+        $rules['emergency_contact_name'] = 'nullable|string|max:255';
+        $rules['emergency_contact_phone'] = 'nullable|string|max:20';
+        $rules['emergency_contact_relationship'] = 'nullable|string|max:100';
+        
+        // Additional information
+        $rules['marital_status'] = 'nullable|in:single,married,divorced,widowed';
+        $rules['dependents'] = 'nullable|integer|min:0';
+        $rules['occupation'] = 'nullable|string|max:255';
+        $rules['business_description'] = 'nullable|string';
+        $rules['years_in_business'] = 'nullable|integer|min:0';
+        $rules['annual_turnover'] = 'nullable|numeric|min:0';
+        $rules['notes'] = 'nullable|string';
+        
+        // KYC Documents validation - only validate if files are uploaded
+        $hasValidFiles = false;
+        if ($request->hasFile('kyc_documents')) {
+            // Filter out empty file inputs
+            $files = array_filter($request->file('kyc_documents'), function($file) {
+                return $file && $file->isValid();
+            });
+            
+            if (!empty($files)) {
+                $hasValidFiles = true;
+                $rules['kyc_documents'] = 'array';
+                $rules['kyc_documents.*'] = 'nullable|file|mimes:pdf,jpg,jpeg,png,doc,docx|max:10240'; // 10MB max per file, nullable to allow empty inputs
+                $rules['kyc_document_types'] = 'nullable|array';
+                $rules['kyc_document_types.*'] = 'nullable|string|max:255';
+                $rules['kyc_document_descriptions'] = 'nullable|array';
+                $rules['kyc_document_descriptions.*'] = 'nullable|string|max:1000';
+            }
+        }
+        
+        $request->validate($rules);
+
+        // Handle removed documents first
+        $existingDocuments = $client->kyc_documents ?? [];
+        $removedIndices = json_decode($request->input('removed_documents', '[]'), true) ?? [];
+        
+        if (!empty($removedIndices)) {
+            $removedDocs = [];
+            foreach ($removedIndices as $index) {
+                if (isset($existingDocuments[$index])) {
+                    $removedDocs[] = $existingDocuments[$index];
+                    // Delete the file
+                    if (isset($existingDocuments[$index]['path'])) {
+                        $filePath = storage_path('app/public/' . $existingDocuments[$index]['path']);
+                        if (file_exists($filePath)) {
+                            unlink($filePath);
+                        }
+                    }
+                }
+            }
+            
+            // Remove documents from array
+            $existingDocuments = array_values(array_filter($existingDocuments, function($index) use ($removedIndices) {
+                return !in_array($index, $removedIndices);
+            }, ARRAY_FILTER_USE_KEY));
+            
+            // Log document removals
+            if (!empty($removedDocs)) {
+                SystemLog::log(
+                    'KYC documents removed',
+                    'Removed ' . count($removedDocs) . ' KYC document(s) from client ' . $client->client_number,
+                    'info',
+                    $client,
+                    Auth::id(),
+                    ['removed_documents' => array_map(function($doc) {
+                        return $doc['name'] ?? 'Unknown';
+                    }, $removedDocs)]
+                );
+            }
+        }
+
+        // Handle new KYC document uploads
+        $newDocuments = [];
+        if ($hasValidFiles) {
+            $documentTypes = $request->input('kyc_document_types', []);
+            $documentDescriptions = $request->input('kyc_document_descriptions', []);
+            
+            // Process each file input
+            foreach ($request->file('kyc_documents') as $index => $file) {
+                // Skip empty file inputs
+                if (!$file || !$file->isValid()) {
+                    continue;
+                }
+                
+                try {
+                    $originalSize = $file->getSize();
+                    $mimeType = $file->getMimeType();
+                    $filename = time() . '_' . uniqid() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientOriginalName());
+                    $extension = $file->getClientOriginalExtension();
+                    
+                    // Compress images if they are image files
+                    if (strpos($mimeType, 'image/') === 0 && in_array(strtolower($extension), ['jpg', 'jpeg', 'png'])) {
+                        $path = $this->compressAndStoreImage($file, $filename, 'client_kyc_documents');
+                        $finalSize = filesize(storage_path('app/public/' . $path));
+                    } else {
+                        // For non-image files, store as-is
+                        $path = $file->storeAs('client_kyc_documents', $filename, 'public');
+                        $finalSize = filesize(storage_path('app/public/' . $path));
+                    }
+                    
+                    $newDocuments[] = [
+                        'id' => uniqid(),
+                        'name' => $file->getClientOriginalName(),
+                        'type' => isset($documentTypes[$index]) && !empty($documentTypes[$index]) ? $documentTypes[$index] : 'other',
+                        'description' => isset($documentDescriptions[$index]) ? $documentDescriptions[$index] : null,
+                        'filename' => $filename,
+                        'path' => $path,
+                        'size' => $finalSize,
+                        'original_size' => $originalSize,
+                        'mime_type' => $mimeType,
+                        'uploaded_by' => auth()->id(),
+                        'uploaded_at' => now()->toISOString(),
+                        'status' => 'pending'
+                    ];
+                } catch (\Exception $e) {
+                    \Log::error('Error uploading KYC document: ' . $e->getMessage());
+                    continue; // Skip this file and continue with others
+                }
+            }
+            
+            // Log document uploads
+            if (!empty($newDocuments)) {
+                SystemLog::log(
+                    'KYC documents uploaded',
+                    'Uploaded ' . count($newDocuments) . ' new KYC document(s) for client ' . $client->client_number,
+                    'info',
+                    $client,
+                    Auth::id(),
+                    ['uploaded_documents' => array_map(function($doc) {
+                        return $doc['name'] ?? 'Unknown';
+                    }, $newDocuments)]
+                );
+            }
+        }
+
+        // Merge existing and new documents
+        $allDocuments = array_merge($existingDocuments, $newDocuments);
+
+        // Prepare update data - include documents in the update
+        $updateData = $request->except(['kyc_documents', 'kyc_document_types', 'kyc_document_descriptions', 'removed_documents']);
+        $updateData['kyc_documents'] = $allDocuments;
+        
+        // Log document state before update
+        \Log::info('Updating client documents', [
+            'client_id' => $client->id,
+            'existing_count' => count($existingDocuments),
+            'new_count' => count($newDocuments),
+            'removed_count' => count($removedIndices),
+            'total_documents' => count($allDocuments)
+        ]);
+        
+        // Update client with all fields including documents in one go
+        $client->update($updateData);
+        
+        // Refresh to ensure we have the latest data
+        $client->refresh();
+        
+        // Verify documents were saved
+        \Log::info('Client documents after update', [
+            'client_id' => $client->id,
+            'saved_documents_count' => count($client->kyc_documents ?? [])
+        ]);
 
         // Log the client update
         SystemLog::log(
             'Client updated',
             'Client ' . $client->display_name . ' (' . $client->client_number . ') was updated',
+            'info',
             $client,
-            'client_updated'
+            Auth::id(),
+            ['client_type' => $client->client_type, 'changes' => array_keys($updateData)]
         );
 
         return redirect()->route('clients.show', $client)
@@ -351,8 +593,10 @@ class ClientsController extends Controller
         SystemLog::log(
             'Client deleted',
             'Client ' . $client->display_name . ' (' . $client->client_number . ') was deleted',
+            'warning',
             $client,
-            'client_deleted'
+            Auth::id(),
+            ['client_type' => $client->client_type]
         );
 
         return redirect()->route('clients.index')
@@ -388,6 +632,78 @@ class ClientsController extends Controller
 
         return redirect()->route('clients.show', $client)
             ->with('success', 'KYC status updated successfully.');
+    }
+
+    /**
+     * Compress and store image file
+     */
+    private function compressAndStoreImage($file, $filename, $directory = 'client_kyc_documents', $quality = 75, $maxWidth = 1920, $maxHeight = 1920)
+    {
+        try {
+            // Check if GD extension is available
+            if (!extension_loaded('gd')) {
+                // Fallback: store original if GD is not available
+                return $file->storeAs($directory, $filename, 'public');
+            }
+
+            $image = imagecreatefromstring(file_get_contents($file->getRealPath()));
+            if (!$image) {
+                // Fallback: store original if image creation fails
+                return $file->storeAs($directory, $filename, 'public');
+            }
+
+            $originalWidth = imagesx($image);
+            $originalHeight = imagesy($image);
+
+            // Calculate new dimensions maintaining aspect ratio
+            $ratio = min($maxWidth / $originalWidth, $maxHeight / $originalHeight);
+            $newWidth = (int)($originalWidth * $ratio);
+            $newHeight = (int)($originalHeight * $ratio);
+
+            // Only resize if image is larger than max dimensions
+            if ($originalWidth > $maxWidth || $originalHeight > $maxHeight) {
+                $resizedImage = imagecreatetruecolor($newWidth, $newHeight);
+                
+                // Preserve transparency for PNG
+                imagealphablending($resizedImage, false);
+                imagesavealpha($resizedImage, true);
+                
+                imagecopyresampled($resizedImage, $image, 0, 0, 0, 0, $newWidth, $newHeight, $originalWidth, $originalHeight);
+                imagedestroy($image);
+                $image = $resizedImage;
+            }
+
+            // Determine file type and save
+            $extension = strtolower($file->getClientOriginalExtension());
+            $fullPath = storage_path('app/public/' . $directory . '/' . $filename);
+            
+            // Ensure directory exists
+            Storage::disk('public')->makeDirectory($directory);
+
+            switch ($extension) {
+                case 'jpg':
+                case 'jpeg':
+                    imagejpeg($image, $fullPath, $quality);
+                    break;
+                case 'png':
+                    // PNG quality is 0-9, convert from 0-100
+                    $pngQuality = (int)(9 - ($quality / 100) * 9);
+                    imagepng($image, $fullPath, $pngQuality);
+                    break;
+                default:
+                    // Fallback: store original
+                    imagedestroy($image);
+                    return $file->storeAs($directory, $filename, 'public');
+            }
+
+            imagedestroy($image);
+            
+            return $directory . '/' . $filename;
+        } catch (\Exception $e) {
+            // Fallback: store original if compression fails
+            \Log::warning('Image compression failed: ' . $e->getMessage());
+            return $file->storeAs($directory, $filename, 'public');
+        }
     }
 
     /**

@@ -277,8 +277,16 @@
                     <p>Assets: {{ number_format($balanceSheetData['totals']['total_assets'], 2) }}</p>
                     <p>Liabilities & Equity: {{ number_format($balanceSheetData['totals']['total_liabilities_and_equity'], 2) }}</p>
                     @if(!$balanceSheetData['totals']['is_balanced'])
-                        <p class="text-red-600 font-medium">
-                            Difference: {{ number_format($balanceSheetData['totals']['total_assets'] - $balanceSheetData['totals']['total_liabilities_and_equity'], 2) }}
+                        <p class="text-red-600 font-medium mt-2">
+                            Difference: TZS {{ number_format(abs($balanceSheetData['totals']['difference'] ?? 0), 2) }}
+                            @if(($balanceSheetData['totals']['difference'] ?? 0) > 0)
+                                (Assets exceed Liabilities & Equity)
+                            @else
+                                (Liabilities & Equity exceed Assets)
+                            @endif
+                        </p>
+                        <p class="text-xs text-gray-500 mt-2">
+                            Note: The balance sheet should balance. If there's a difference, check that all transactions are properly recorded and accounts are correctly categorized.
                         </p>
                     @endif
                 </div>

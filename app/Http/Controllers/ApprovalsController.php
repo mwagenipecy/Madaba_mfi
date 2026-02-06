@@ -111,7 +111,7 @@ class ApprovalsController extends Controller
         $pendingRecharges = AccountRecharge::whereHas('mainAccount', function($query) use ($organizationId) {
             $query->where('organization_id', $organizationId);
         })->where('status', 'pending')
-        ->with(['mainAccount', 'requester', 'approver'])
+        ->with(['mainAccount.accountType', 'requester', 'approver'])
         ->latest()
         ->get();
 
@@ -267,6 +267,121 @@ class ApprovalsController extends Controller
 
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'An error occurred while rejecting the loan: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Approve an account recharge
+     */
+    public function approveAccountRecharge(Request $request, AccountRecharge $recharge)
+    {
+        $request->validate([
+            'approval_notes' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
+            
+            // Verify recharge belongs to organization
+            if ($recharge->mainAccount->organization_id !== $organizationId) {
+                return redirect()->back()->with('error', 'Unauthorized access to this recharge.');
+            }
+
+            // Check if recharge can be approved
+            if ($recharge->status !== 'pending') {
+                return redirect()->back()->with('error', 'This recharge cannot be approved in its current status.');
+            }
+
+            // Approve the recharge
+            if (!$recharge->approve(auth()->id(), $request->approval_notes)) {
+                return redirect()->back()->with('error', 'Failed to approve the recharge.');
+            }
+
+            // Complete the recharge immediately to reflect in accounts
+            if (!$recharge->complete()) {
+                return redirect()->back()->with('error', 'Recharge approved but failed to complete. Please contact support.');
+            }
+
+            // Update the approval record
+            $approval = Approval::where('reference_type', 'AccountRecharge')
+                ->where('reference_id', $recharge->id)
+                ->where('status', 'approved')
+                ->first();
+            
+            if ($approval) {
+                $approval->update([
+                    'approver_id' => auth()->id(),
+                    'approval_notes' => $request->approval_notes,
+                    'approved_at' => now(),
+                ]);
+            }
+
+            return redirect()->back()->with('success', 'Account recharge approved and completed successfully. Funds have been reflected in accounts.');
+
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'An error occurred while approving the recharge: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Reject an account recharge
+     */
+    public function rejectAccountRecharge(Request $request, AccountRecharge $recharge)
+    {
+        $request->validate([
+            'rejection_reason' => 'required|string|max:500',
+        ]);
+
+        try {
+            $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
+            
+            // Verify recharge belongs to organization
+            if ($recharge->mainAccount->organization_id !== $organizationId) {
+                return redirect()->back()->with('error', 'Unauthorized access to this recharge.');
+            }
+
+            // Check if recharge can be rejected
+            if ($recharge->status !== 'pending') {
+                return redirect()->back()->with('error', 'This recharge cannot be rejected in its current status.');
+            }
+
+            // Reject the recharge
+            if (!$recharge->reject(auth()->id(), $request->rejection_reason)) {
+                return redirect()->back()->with('error', 'Failed to reject the recharge.');
+            }
+
+            // Update the approval record
+            $approval = Approval::where('reference_type', 'AccountRecharge')
+                ->where('reference_id', $recharge->id)
+                ->first();
+            
+            if ($approval) {
+                $approval->update([
+                    'status' => 'rejected',
+                    'approver_id' => auth()->id(),
+                    'approval_notes' => $request->rejection_reason,
+                    'approved_at' => now(),
+                ]);
+            } else {
+                // Create rejection approval record
+                Approval::create([
+                    'approval_number' => 'APP-RC-' . str_pad($recharge->id, 6, '0', STR_PAD_LEFT),
+                    'type' => 'account_recharge',
+                    'reference_type' => 'AccountRecharge',
+                    'reference_id' => $recharge->id,
+                    'requested_by' => $recharge->requested_by,
+                    'approver_id' => auth()->id(),
+                    'status' => 'rejected',
+                    'description' => "Rejection for account recharge: {$recharge->recharge_number}",
+                    'approval_notes' => $request->rejection_reason,
+                    'approved_at' => now(),
+                ]);
+            }
+
+            return redirect()->back()->with('success', 'Account recharge rejected successfully.');
+
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'An error occurred while rejecting the recharge: ' . $e->getMessage());
         }
     }
 

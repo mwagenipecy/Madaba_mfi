@@ -81,7 +81,7 @@
                     </div>
                     <div class="ml-3">
                         <p class="text-sm font-medium text-gray-600">Total Balance</p>
-                        <p class="text-2xl font-semibold text-gray-900">{{ number_format($totalBalance, 2) }} TZS</p>
+                        <p class="text-2xl font-semibold text-green-600">TZS {{ number_format($totalBalance, 2) }}</p>
                     </div>
                 </div>
             </div>
@@ -155,9 +155,20 @@
                                         </div>
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap">
-                                        <div class="text-sm text-gray-900">{{ number_format($account->balance, 2) }} {{ $account->currency }}</div>
-                                        @if($account->opening_balance != $account->balance)
-                                            <div class="text-xs text-gray-500">Opening: {{ number_format($account->opening_balance, 2) }}</div>
+                                        @php
+                                            $isExternal = $account->account_classification === 'external' 
+                                                || (isset($account->account_number) && str_starts_with($account->account_number, 'EXT-'));
+                                        @endphp
+                                        <div class="text-sm font-semibold {{ $isExternal ? 'text-gray-500' : 'text-gray-900' }}">
+                                            TZS {{ number_format($account->calculated_balance ?? $account->balance ?? 0, 2) }}
+                                            @if($isExternal)
+                                                <span class="text-xs text-gray-400 ml-2">(External)</span>
+                                            @endif
+                                        </div>
+                                        @if(isset($account->opening_balance) && abs(($account->calculated_balance ?? $account->balance ?? 0) - $account->opening_balance) > 0.01)
+                                            <div class="text-xs text-gray-500 mt-1">
+                                                Opening: TZS {{ number_format($account->opening_balance ?? 0, 2) }}
+                                            </div>
                                         @endif
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap">

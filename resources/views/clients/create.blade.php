@@ -14,7 +14,7 @@
         </div>
 
         <!-- Client Registration Form -->
-        <form action="{{ route('clients.store') }}" method="POST" class="space-y-6">
+        <form action="{{ route('clients.store') }}" method="POST" enctype="multipart/form-data" class="space-y-6">
             @csrf
             
             <!-- Display validation errors -->
@@ -449,6 +449,62 @@
                 </div>
             </div>
 
+            <!-- KYC Documents -->
+            <div class="bg-white rounded-lg shadow-sm p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">KYC Documents</h3>
+                <p class="text-sm text-gray-600 mb-4">Upload required KYC documents for client verification. Supported formats: PDF, JPG, PNG, DOC, DOCX (Max 10MB per file)</p>
+                
+                <div id="kyc_documents_container" class="space-y-4">
+                    <!-- Document Upload Fields -->
+                    <div class="kyc-document-item border border-gray-200 rounded-lg p-4 bg-gray-50">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <!-- Document Type -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Document Type *</label>
+                                <select name="kyc_document_types[]" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500" required>
+                                    <option value="">Select document type</option>
+                                    <option value="national_id">National ID</option>
+                                    <option value="passport">Passport</option>
+                                    <option value="driving_license">Driving License</option>
+                                    <option value="birth_certificate">Birth Certificate</option>
+                                    <option value="utility_bill">Utility Bill</option>
+                                    <option value="bank_statement">Bank Statement</option>
+                                    <option value="business_registration">Business Registration</option>
+                                    <option value="tax_certificate">Tax Certificate</option>
+                                    <option value="proof_of_address">Proof of Address</option>
+                                    <option value="employment_letter">Employment Letter</option>
+                                    <option value="salary_slip">Salary Slip</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Document File -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Document File *</label>
+                                <input type="file" name="kyc_documents[]" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" 
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100" 
+                                       required>
+                            </div>
+                            
+                            <!-- Document Description -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                                <input type="text" name="kyc_document_descriptions[]" 
+                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500" 
+                                       placeholder="Optional description">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Add More Documents Button -->
+                <div class="mt-4">
+                    <button type="button" id="add_kyc_document" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors text-sm">
+                        + Add Another Document
+                    </button>
+                </div>
+            </div>
+
             <!-- Additional Notes -->
             <div class="bg-white rounded-lg shadow-sm p-6">
                 <h3 class="text-lg font-semibold text-gray-900 mb-4">Additional Information</h3>
@@ -497,6 +553,72 @@
                 }
             }
         }
+
+        // Add more KYC document fields
+        document.getElementById('add_kyc_document').addEventListener('click', function() {
+            const container = document.getElementById('kyc_documents_container');
+            const newDocument = document.createElement('div');
+            newDocument.className = 'kyc-document-item border border-gray-200 rounded-lg p-4 bg-gray-50';
+            newDocument.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Document Type *</label>
+                        <select name="kyc_document_types[]" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500" required>
+                            <option value="">Select document type</option>
+                            <option value="national_id">National ID</option>
+                            <option value="passport">Passport</option>
+                            <option value="driving_license">Driving License</option>
+                            <option value="birth_certificate">Birth Certificate</option>
+                            <option value="utility_bill">Utility Bill</option>
+                            <option value="bank_statement">Bank Statement</option>
+                            <option value="business_registration">Business Registration</option>
+                            <option value="tax_certificate">Tax Certificate</option>
+                            <option value="proof_of_address">Proof of Address</option>
+                            <option value="employment_letter">Employment Letter</option>
+                            <option value="salary_slip">Salary Slip</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Document File *</label>
+                        <input type="file" name="kyc_documents[]" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100" 
+                               required>
+                    </div>
+                    <div class="flex items-end">
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                            <input type="text" name="kyc_document_descriptions[]" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500" 
+                                   placeholder="Optional description">
+                        </div>
+                        <button type="button" class="ml-2 px-3 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors remove-document" title="Remove this document">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            `;
+            container.appendChild(newDocument);
+            
+            // Add remove functionality
+            newDocument.querySelector('.remove-document').addEventListener('click', function() {
+                newDocument.remove();
+            });
+        });
+
+        // Add remove functionality to initial document (if more than one)
+        document.querySelectorAll('.remove-document').forEach(button => {
+            button.addEventListener('click', function() {
+                const container = document.getElementById('kyc_documents_container');
+                if (container.children.length > 1) {
+                    this.closest('.kyc-document-item').remove();
+                } else {
+                    alert('You must have at least one document field.');
+                }
+            });
+        });
     </script>
 </x-app-shell>
 

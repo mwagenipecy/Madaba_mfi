@@ -60,6 +60,7 @@ class AccountsController extends Controller
 
         // Fetch one main account per AccountType (avoid duplicates)
         $categories = collect();
+        $accountingService = app(\App\Services\AccountingService::class);
         
         foreach ($accountTypes as $accountType) {
             $account = Account::where('organization_id', $organizationId)
@@ -85,13 +86,29 @@ class AccountsController extends Controller
                 ->withCount(['childAccounts as sub_accounts_count' => function($q) use ($organizationId) {
                     $q->where('organization_id', $organizationId);
                 }])
-                ->withSum(['childAccounts as total_balance' => function($q) use ($organizationId) {
-                    $q->where('organization_id', $organizationId);
-                }], 'balance')
                 ->with('accountType')
                 ->first();
                 
             if ($account) {
+                // Calculate the main account's balance from general ledger
+                $account->calculated_balance = $accountingService->calculateAccountBalance($account);
+                
+                // Get all child accounts for this organization and calculate their balances
+                $childAccounts = Account::where('organization_id', $organizationId)
+                    ->where('parent_account_id', $account->id)
+                    ->get();
+                
+                // Calculate total balance from child accounts using AccountingService
+                $totalChildBalance = 0;
+                foreach ($childAccounts as $childAccount) {
+                    $childAccount->calculated_balance = $accountingService->calculateAccountBalance($childAccount);
+                    $totalChildBalance += $childAccount->calculated_balance;
+                }
+                
+                // Total balance = main account balance + sum of all child account balances
+                $account->total_balance = $account->calculated_balance + $totalChildBalance;
+                $account->child_accounts_count = $childAccounts->count();
+                
                 $categories->push($account);
             }
         }
@@ -128,15 +145,39 @@ class AccountsController extends Controller
         
         $accounts = $query->get();
         
+        // Calculate balances using AccountingService
+        $accountingService = app(\App\Services\AccountingService::class);
+        $totalBalance = 0;
+        
+        foreach ($accounts as $account) {
+            $account->calculated_balance = $accountingService->calculateAccountBalance($account);
+            
+            // Exclude external accounts (account_classification = 'external' or account_number starts with 'EXT-')
+            // from total balance calculation
+            $isExternal = $account->account_classification === 'external' 
+                || (isset($account->account_number) && str_starts_with($account->account_number, 'EXT-'));
+            
+            if (!$isExternal) {
+                $totalBalance += $account->calculated_balance;
+            }
+            
+            // Mark account as external for view display
+            $account->is_external_account = $isExternal;
+        }
+        
         // Calculate statistics
         $totalAccounts = $accounts->count();
-        $totalBalance = $accounts->sum('balance');
         
-        // Get account type statistics
+        // Get account type statistics using calculated balances (excluding external accounts)
         $accountTypeStats = $accounts->groupBy('accountType.name')->map(function ($group) {
             return [
                 'count' => $group->count(),
-                'balance' => $group->sum('balance')
+                'balance' => $group->sum(function($account) {
+                    // Exclude external accounts from balance calculation
+                    $isExternal = $account->account_classification === 'external' 
+                        || (isset($account->account_number) && str_starts_with($account->account_number, 'EXT-'));
+                    return $isExternal ? 0 : ($account->calculated_balance ?? 0);
+                })
             ];
         });
         
@@ -399,13 +440,27 @@ class AccountsController extends Controller
         // Ensure provided account is a main category account
         abort_if(!is_null($account->parent_account_id), 404);
 
-        $subAccounts = Account::with(['branch'])
+        $subAccounts = Account::with(['branch', 'accountType'])
             ->where('organization_id', $organizationId)
             ->where('parent_account_id', $account->id)
             ->orderBy('branch_id')
             ->get();
 
-        $totalBalance = $subAccounts->sum('balance');
+        // Calculate balances using AccountingService
+        $accountingService = app(\App\Services\AccountingService::class);
+        $totalBalance = 0;
+        
+        // Calculate main account balance
+        $account->calculated_balance = $accountingService->calculateAccountBalance($account);
+        
+        // Calculate each sub-account balance
+        foreach ($subAccounts as $subAccount) {
+            $subAccount->calculated_balance = $accountingService->calculateAccountBalance($subAccount);
+            $totalBalance += $subAccount->calculated_balance;
+        }
+        
+        // Total includes main account balance + all sub-account balances
+        $totalBalance += $account->calculated_balance;
 
         return view('accounts.subaccounts', [
             'category' => $account,

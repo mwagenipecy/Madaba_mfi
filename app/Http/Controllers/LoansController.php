@@ -122,7 +122,11 @@ class LoansController extends Controller
             'loan_product_id' => 'required|exists:loan_products,id',
             'loan_amount' => 'required|numeric|min:0.01',
             'interest_rate' => 'nullable|numeric|min:0|max:100',
-            'loan_tenure_months' => 'nullable|integer|min:1|max:360',
+            'loan_tenure_value' => 'nullable|numeric|min:1',
+            'loan_tenure_months' => 'required|numeric|min:0.01',
+            'processing_fee' => 'nullable|numeric|min:0',
+            'processing_fee_amount' => 'nullable|numeric|min:0',
+            'insurance_fee' => 'nullable|numeric|min:0',
             'interest_calculation_method' => 'nullable|in:flat,reducing',
             'repayment_frequency' => 'nullable|in:daily,weekly,monthly,quarterly',
             'branch_id' => 'nullable|exists:branches,id',
@@ -179,6 +183,26 @@ class LoansController extends Controller
             }
         }
 
+        // Get tenure value - JavaScript converts it to months before submission
+        $tenureInMonths = $request->loan_tenure_months ?? $loanProduct->min_tenure_months;
+        
+        // Calculate processing fee amount based on product's fee type
+        $processingFeeAmount = 0;
+        if ($request->has('processing_fee_amount') && $request->processing_fee_amount) {
+            // Use the calculated amount from JavaScript
+            $processingFeeAmount = $request->processing_fee_amount;
+        } else {
+            // Fallback: calculate based on product settings
+            $processingFee = $loanProduct->processing_fee ?? 0;
+            $processingFeeType = $loanProduct->processing_fee_type ?? 'fixed';
+            
+            if ($processingFeeType === 'percent') {
+                $processingFeeAmount = ($request->loan_amount * $processingFee) / 100;
+            } else {
+                $processingFeeAmount = $processingFee;
+            }
+        }
+        
         // Create the loan
         $loan = Loan::create([
             'loan_number' => Loan::generateLoanNumber(),
@@ -189,9 +213,11 @@ class LoansController extends Controller
             'loan_officer_id' => $request->loan_officer_id ?? auth()->id(),
             'loan_amount' => $request->loan_amount,
             'interest_rate' => $request->interest_rate ?? $loanProduct->interest_rate,
-            'loan_tenure_months' => $request->loan_tenure_months ?? $loanProduct->min_tenure_months,
+            'loan_tenure_months' => $tenureInMonths,
             'interest_calculation_method' => $request->interest_calculation_method ?? 'flat',
             'repayment_frequency' => $request->repayment_frequency ?? 'monthly',
+            'processing_fee' => $processingFeeAmount,
+            'insurance_fee' => $request->insurance_fee ?? 0,
             'application_date' => now()->toDateString(),
             'purpose' => $request->purpose,
             'collateral_description' => $request->collateral_description,
@@ -508,7 +534,179 @@ class LoansController extends Controller
             'rejectedBy',
             'returnedBy'
         ]);
-        return view('loans.show', compact('loan'));
+        
+        // Calculate total interest percentage
+        $totalInterestPercentage = 0;
+        if ($loan->loan_amount > 0 && $loan->total_interest) {
+            $totalInterestPercentage = ($loan->total_interest / $loan->loan_amount) * 100;
+        } elseif ($loan->loan_amount > 0 && $loan->interest_rate && $loan->loan_tenure_months) {
+            // Calculate if not set
+            $rate = $loan->interest_rate / 100;
+            if ($loan->interest_calculation_method === 'flat') {
+                $totalInterest = $loan->loan_amount * $rate * ($loan->loan_tenure_months / 12);
+            } else {
+                // Reducing balance approximation
+                $monthlyRate = $rate / 12;
+                $totalPayments = $loan->loan_tenure_months;
+                $monthlyPayment = $loan->loan_amount * ($monthlyRate * pow(1 + $monthlyRate, $totalPayments)) / (pow(1 + $monthlyRate, $totalPayments) - 1);
+                $totalInterest = ($monthlyPayment * $totalPayments) - $loan->loan_amount;
+            }
+            $totalInterestPercentage = ($totalInterest / $loan->loan_amount) * 100;
+        }
+        
+        // Generate preview schedule if not saved yet
+        // Show for approved loans or pending/under_review loans (for preview purposes)
+        $previewSchedule = null;
+        if ($loan->schedules->count() === 0) {
+            // Use approved_amount if available, otherwise use loan_amount for preview
+            $amountToUse = $loan->approved_amount ?? $loan->loan_amount;
+            if ($amountToUse && $loan->interest_rate && $loan->loan_tenure_months) {
+                // Temporarily set approved_amount for calculation if not set
+                $originalApprovedAmount = $loan->approved_amount;
+                if (!$loan->approved_amount) {
+                    $loan->approved_amount = $loan->loan_amount;
+                }
+                $previewSchedule = $this->generatePreviewSchedule($loan);
+                // Restore original value
+                if (!$originalApprovedAmount) {
+                    $loan->approved_amount = null;
+                }
+            }
+        }
+        
+        return view('loans.show', compact('loan', 'totalInterestPercentage', 'previewSchedule'));
+    }
+    
+    /**
+     * Generate preview schedule without saving to database
+     */
+    private function generatePreviewSchedule(Loan $loan): array
+    {
+        if (!$loan->approved_amount || !$loan->interest_rate || !$loan->loan_tenure_months) {
+            return [];
+        }
+
+        $principal = $loan->approved_amount;
+        $rate = $loan->interest_rate / 100;
+        $months = $loan->loan_tenure_months;
+        $frequency = $loan->repayment_frequency ?? 'monthly';
+
+        // Calculate payment frequency multiplier
+        $frequencyMultiplier = match($frequency) {
+            'daily' => 30,
+            'weekly' => 4,
+            'monthly' => 1,
+            'quarterly' => 0.33,
+            default => 1,
+        };
+
+        $totalPayments = ceil($months * $frequencyMultiplier);
+        $schedule = [];
+        $paymentDate = $loan->first_payment_date ? \Carbon\Carbon::parse($loan->first_payment_date) : now()->addDays(30);
+        
+        if ($loan->interest_calculation_method === 'flat') {
+            $totalInterest = $principal * $rate * ($months / 12);
+            $monthlyPayment = ($principal + $totalInterest) / $totalPayments;
+            $principalAmount = $principal / $totalPayments;
+            $interestAmount = $totalInterest / $totalPayments;
+            
+            for ($i = 1; $i <= $totalPayments; $i++) {
+                $dueDate = $paymentDate->copy();
+                if ($frequency === 'daily') {
+                    $dueDate->addDays($i - 1);
+                } elseif ($frequency === 'weekly') {
+                    $dueDate->addWeeks($i - 1);
+                } elseif ($frequency === 'monthly') {
+                    $dueDate->addMonths($i - 1);
+                } elseif ($frequency === 'quarterly') {
+                    $dueDate->addMonths(($i - 1) * 3);
+                }
+                
+                $schedule[] = [
+                    'installment_number' => $i,
+                    'due_date' => $dueDate,
+                    'principal_amount' => $principalAmount,
+                    'interest_amount' => $interestAmount,
+                    'total_amount' => $principalAmount + $interestAmount,
+                ];
+            }
+        } else {
+            // Reducing balance
+            // Calculate periodic rate based on frequency
+            $periodicRate = match($frequency) {
+                'daily' => $rate / 365, // Daily rate
+                'weekly' => $rate / 52, // Weekly rate
+                'monthly' => $rate / 12, // Monthly rate
+                'quarterly' => $rate / 4, // Quarterly rate
+                default => $rate / 12, // Default to monthly
+            };
+            
+            $periodicPayment = $principal * ($periodicRate * pow(1 + $periodicRate, $totalPayments)) / (pow(1 + $periodicRate, $totalPayments) - 1);
+            $remainingBalance = $principal;
+            
+            for ($i = 1; $i <= $totalPayments; $i++) {
+                $interestAmount = $remainingBalance * $periodicRate;
+                $principalAmount = $periodicPayment - $interestAmount;
+                
+                if ($i === $totalPayments) {
+                    $principalAmount = $remainingBalance;
+                    $periodicPayment = $principalAmount + $interestAmount;
+                }
+                
+                $dueDate = $paymentDate->copy();
+                if ($frequency === 'daily') {
+                    $dueDate->addDays($i - 1);
+                } elseif ($frequency === 'weekly') {
+                    $dueDate->addWeeks($i - 1);
+                } elseif ($frequency === 'monthly') {
+                    $dueDate->addMonths($i - 1);
+                } elseif ($frequency === 'quarterly') {
+                    $dueDate->addMonths(($i - 1) * 3);
+                } else {
+                    // Default to monthly
+                    $dueDate->addMonths($i - 1);
+                }
+                
+                $schedule[] = [
+                    'installment_number' => $i,
+                    'due_date' => $dueDate,
+                    'principal_amount' => $principalAmount,
+                    'interest_amount' => $interestAmount,
+                    'total_amount' => $principalAmount + $interestAmount,
+                ];
+                
+                $remainingBalance -= $principalAmount;
+            }
+        }
+        
+        return $schedule;
+    }
+    
+    /**
+     * Submit loan for review
+     */
+    public function submitForReview(Loan $loan)
+    {
+        // Check if loan has documents
+        if (!$loan->documents || count($loan->documents) === 0) {
+            return redirect()->back()->with('error', 'Please upload at least one document before submitting for review.');
+        }
+        
+        // Update loan status
+        $loan->update([
+            'status' => 'under_review',
+        ]);
+        
+        SystemLog::log(
+            'Loan submitted for review',
+            'Loan ' . $loan->loan_number . ' submitted for review',
+            'info',
+            $loan,
+            auth()->id()
+        );
+        
+        return redirect()->route('loans.show', $loan)
+            ->with('success', 'Loan submitted for review successfully.');
     }
 
     /**

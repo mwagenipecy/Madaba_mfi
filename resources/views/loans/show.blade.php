@@ -28,6 +28,20 @@
                         </a>
                         
                         @if($loan->status === 'pending')
+                            @if(auth()->user()->id === $loan->loan_officer_id || auth()->user()->id === $loan->client->user_id ?? null)
+                                @if($loan->documents && count($loan->documents) > 0)
+                                    <form method="POST" action="{{ route('loans.submit-for-review', $loan) }}" class="inline">
+                                        @csrf
+                                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                                            Submit for Review
+                                        </button>
+                                    </form>
+                                @else
+                                    <span class="bg-gray-400 text-white px-4 py-2 rounded-lg font-medium cursor-not-allowed" title="Please upload at least one document">
+                                        Submit for Review
+                                    </span>
+                                @endif
+                            @endif
                             @if(in_array(auth()->user()->role, ['admin', 'manager', 'super_admin']))
                                 <button onclick="openApprovalModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
                                     Approve Loan
@@ -35,14 +49,6 @@
                                 <button onclick="openRejectionModal()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
                                     Reject Loan
                                 </button>
-                            @endif
-                            @if(in_array(auth()->user()->role, ['admin', 'manager', 'super_admin', 'loan_officer']))
-                                <form method="POST" action="{{ route('loans.under-review', $loan) }}" class="inline">
-                                    @csrf
-                                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-                                        Put Under Review
-                                    </button>
-                                </form>
                             @endif
                         @endif
                         
@@ -89,8 +95,9 @@
                                     <p class="mt-1 text-sm text-gray-900">{{ $loan->formatted_approved_amount }}</p>
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700">Interest Rate</label>
-                                    <p class="mt-1 text-sm text-gray-900">{{ $loan->interest_rate }}% per annum</p>
+                                    <label class="block text-sm font-medium text-gray-700">Total Interest Rate</label>
+                                    <p class="mt-1 text-sm text-gray-900">{{ number_format($totalInterestPercentage, 2) }}% of loan amount</p>
+                                    <p class="mt-1 text-xs text-gray-500">({{ $loan->interest_rate }}% per annum)</p>
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700">Interest Calculation</label>
@@ -98,7 +105,18 @@
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700">Loan Tenure</label>
-                                    <p class="mt-1 text-sm text-gray-900">{{ $loan->loan_tenure_months }} months</p>
+                                    @php
+                                        $frequency = $loan->repayment_frequency ?? 'monthly';
+                                        $tenureMonths = $loan->loan_tenure_months;
+                                        if ($frequency === 'daily') {
+                                            $tenureDisplay = ($tenureMonths * 30) . ' days';
+                                        } elseif ($frequency === 'weekly') {
+                                            $tenureDisplay = ($tenureMonths * 4) . ' weeks';
+                                        } else {
+                                            $tenureDisplay = $tenureMonths . ' months';
+                                        }
+                                    @endphp
+                                    <p class="mt-1 text-sm text-gray-900">{{ $tenureDisplay }}</p>
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700">Repayment Frequency</label>
@@ -142,6 +160,7 @@
                     </div>
 
                     <!-- Loan Schedule -->
+                    @if($loan->schedules->count() > 0 || ($previewSchedule && count($previewSchedule) > 0))
                     @if($loan->schedules->count() > 0)
                     <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                         <div class="p-6">
@@ -178,6 +197,43 @@
                             </div>
                         </div>
                     </div>
+                    @endif
+                    @if($previewSchedule && count($previewSchedule) > 0)
+                    <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                        <div class="p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <h2 class="text-lg font-semibold text-gray-900">Payment Schedule (Preview)</h2>
+                                <span class="px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                                    Not Saved to Database
+                                </span>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Installment</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Principal</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Interest</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        @foreach($previewSchedule as $schedule)
+                                        <tr>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $schedule['installment_number'] }}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $schedule['due_date']->format('M d, Y') }}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">TZS {{ number_format($schedule['principal_amount'], 2) }}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">TZS {{ number_format($schedule['interest_amount'], 2) }}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">TZS {{ number_format($schedule['total_amount'], 2) }}</td>
+                                        </tr>
+                                        @endforeach
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    @endif
                     @endif
 
                     <!-- Recent Transactions -->

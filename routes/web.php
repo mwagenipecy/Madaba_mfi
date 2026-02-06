@@ -172,6 +172,7 @@ Route::middleware([
         Route::post('/{loan}/approve', [App\Http\Controllers\LoansController::class, 'approve'])->name('approve');
         Route::post('/{loan}/reject', [App\Http\Controllers\LoansController::class, 'reject'])->name('reject');
         Route::post('/{loan}/return-to-officer', [App\Http\Controllers\LoansController::class, 'returnToOfficer'])->name('return-to-officer');
+        Route::post('/{loan}/submit-for-review', [App\Http\Controllers\LoansController::class, 'submitForReview'])->name('submit-for-review');
         Route::post('/{loan}/under-review', [App\Http\Controllers\LoansController::class, 'putUnderReview'])->name('under-review');
         Route::post('/{loan}/disburse', [App\Http\Controllers\LoansController::class, 'disburse'])->name('disburse');
         Route::post('/{loan}/repayment', [App\Http\Controllers\LoansController::class, 'processRepayment'])->name('repayment');
@@ -201,6 +202,8 @@ Route::middleware([
         Route::get('/loans', [App\Http\Controllers\ApprovalsController::class, 'loans'])->name('loans');
         Route::get('/fund-transfers', [App\Http\Controllers\ApprovalsController::class, 'fundTransfers'])->name('fund-transfers');
         Route::get('/account-recharges', [App\Http\Controllers\ApprovalsController::class, 'accountRecharges'])->name('account-recharges');
+        Route::post('/account-recharges/{recharge}/approve', [App\Http\Controllers\ApprovalsController::class, 'approveAccountRecharge'])->name('account-recharges.approve');
+        Route::post('/account-recharges/{recharge}/reject', [App\Http\Controllers\ApprovalsController::class, 'rejectAccountRecharge'])->name('account-recharges.reject');
         Route::get('/expenses', [App\Http\Controllers\ApprovalsController::class, 'expenses'])->name('expenses');
         Route::get('/history', [App\Http\Controllers\ApprovalsController::class, 'history'])->name('history');
         Route::post('/{approval}/approve', [App\Http\Controllers\ApprovalsController::class, 'approve'])->name('approve');

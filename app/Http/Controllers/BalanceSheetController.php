@@ -40,12 +40,20 @@ class BalanceSheetController extends Controller
     {
         $asOfDate = $asOfDate ? Carbon::parse($asOfDate) : now();
 
-        // Get all account types
-        $accountTypes = AccountType::orderBy('name')->get();
+        // Use AccountingService for consistent balance calculation
+        $accountingService = app(\App\Services\AccountingService::class);
 
-        // Get accounts with their balances
+        // Get accounts with their balances - EXCLUDE external accounts
         $query = Account::with(['accountType', 'mappedRealAccounts'])
-            ->where('organization_id', $organizationId);
+            ->where('organization_id', $organizationId)
+            ->where(function($q) {
+                // Exclude external accounts
+                $q->where('account_classification', '!=', 'external')
+                  ->where(function($subQ) {
+                      $subQ->whereNull('account_number')
+                           ->orWhere('account_number', 'not like', 'EXT-%');
+                  });
+            });
 
         if ($branchId) {
             $query->where('branch_id', $branchId);
@@ -53,79 +61,88 @@ class BalanceSheetController extends Controller
 
         $accounts = $query->get();
 
-        // Calculate balances for each account
-        $accountBalances = [];
+        // Calculate balances for each account and group by category
+        $assets = [];
+        $liabilities = [];
+        $equity = [];
+        $revenue = [];
+        $expenses = [];
+
         foreach ($accounts as $account) {
-            $balance = $this->calculateAccountBalance($account, $asOfDate);
-            if ($balance != 0) {
-                $accountBalances[] = [
-                    'account' => $account,
-                    'balance' => $balance,
-                    'account_type' => $account->accountType->name,
-                    'account_type_id' => $account->accountType->id,
-                ];
+            // Skip if account type is missing
+            if (!$account->accountType) {
+                continue;
+            }
+
+            $balance = $accountingService->calculateAccountBalance($account, $asOfDate);
+            $category = strtolower($account->accountType->category ?? '');
+            $accountTypeName = $account->accountType->name;
+
+            // Include all accounts (even zero balances) to ensure balance sheet balances
+            // Zero balances will be filtered out in display if needed
+
+            $accountData = [
+                'account' => $account,
+                'balance' => $balance,
+                'account_type' => $accountTypeName,
+                'account_type_id' => $account->accountType->id,
+            ];
+
+            // Group by category
+            switch ($category) {
+                case 'asset':
+                    $assets[] = $accountData;
+                    break;
+                case 'liability':
+                    $liabilities[] = $accountData;
+                    break;
+                case 'equity':
+                    $equity[] = $accountData;
+                    break;
+                case 'income':
+                case 'revenue':
+                    $revenue[] = $accountData;
+                    break;
+                case 'expense':
+                    $expenses[] = $accountData;
+                    break;
             }
         }
 
-        // Group by account type
-        $groupedBalances = collect($accountBalances)->groupBy('account_type_id');
-
         // Prepare balance sheet sections
-        $assets = $this->prepareAssets($groupedBalances, $asOfDate);
-        $liabilities = $this->prepareLiabilities($groupedBalances, $asOfDate);
-        $equity = $this->prepareEquity($groupedBalances, $asOfDate);
+        $assetsSection = $this->prepareAssets(collect($assets), $asOfDate);
+        $liabilitiesSection = $this->prepareLiabilities(collect($liabilities), $asOfDate);
+        $equitySection = $this->prepareEquity(collect($equity), $asOfDate, collect($revenue), collect($expenses));
 
         // Calculate totals
-        $totalAssets = $assets['total'];
-        $totalLiabilities = $liabilities['total'];
-        $totalEquity = $equity['total'];
+        $totalAssets = $assetsSection['total'];
+        $totalLiabilities = $liabilitiesSection['total'];
+        $totalEquity = $equitySection['total'];
         $totalLiabilitiesAndEquity = $totalLiabilities + $totalEquity;
 
         return [
             'as_of_date' => $asOfDate,
-            'assets' => $assets,
-            'liabilities' => $liabilities,
-            'equity' => $equity,
+            'assets' => $assetsSection,
+            'liabilities' => $liabilitiesSection,
+            'equity' => $equitySection,
             'totals' => [
                 'total_assets' => $totalAssets,
                 'total_liabilities' => $totalLiabilities,
                 'total_equity' => $totalEquity,
                 'total_liabilities_and_equity' => $totalLiabilitiesAndEquity,
                 'is_balanced' => abs($totalAssets - $totalLiabilitiesAndEquity) < 0.01,
+                'difference' => $totalAssets - $totalLiabilitiesAndEquity,
             ],
             'organization' => auth()->user()->organization,
             'branch' => $branchId ? \App\Models\Branch::find($branchId) : null,
         ];
     }
 
-    /**
-     * Calculate account balance as of specific date.
-     */
-    private function calculateAccountBalance($account, $asOfDate)
-    {
-        // Get mapped real account balances
-        $realAccountBalance = $account->mappedRealAccounts->sum('last_balance');
-
-        // Get general ledger entries up to the as of date
-        // Use the balance_after from the last transaction entry for accurate balance
-        $lastTransaction = GeneralLedger::where('account_id', $account->id)
-            ->where('transaction_date', '<=', $asOfDate)
-            ->orderBy('transaction_date', 'desc')
-            ->orderBy('id', 'desc')
-            ->first();
-
-        if ($lastTransaction) {
-            return $lastTransaction->balance_after;
-        }
-
-        // If no transactions, return the account's current balance
-        return $account->balance;
-    }
 
     /**
      * Prepare assets section.
      */
-    private function prepareAssets($groupedBalances, $asOfDate)
+    private function prepareAssets($assetsCollection, $asOfDate)
     {
         $assets = [
             'current_assets' => [],
@@ -134,30 +151,39 @@ class BalanceSheetController extends Controller
             'total' => 0,
         ];
 
-        // Define asset account types (you may need to adjust these based on your account types)
-        $currentAssetTypes = ['Cash', 'Bank', 'Accounts Receivable', 'Inventory', 'Prepaid Expenses'];
-        $fixedAssetTypes = ['Equipment', 'Furniture', 'Vehicles', 'Buildings', 'Land'];
-        $otherAssetTypes = ['Investments', 'Intangible Assets', 'Other Assets'];
+        // Group by account type name
+        $groupedByType = $assetsCollection->groupBy('account_type');
 
-        foreach ($groupedBalances as $accountTypeId => $accounts) {
-            $accountType = $accounts->first()['account_type'];
+        foreach ($groupedByType as $accountTypeName => $accounts) {
             $total = $accounts->sum('balance');
-
-            if (in_array($accountType, $currentAssetTypes)) {
+            
+            // Categorize based on account type name (you can adjust these)
+            $accountTypeLower = strtolower($accountTypeName);
+            
+            if (str_contains($accountTypeLower, 'cash') || 
+                str_contains($accountTypeLower, 'bank') || 
+                str_contains($accountTypeLower, 'receivable') ||
+                str_contains($accountTypeLower, 'inventory') ||
+                str_contains($accountTypeLower, 'prepaid')) {
                 $assets['current_assets'][] = [
-                    'type' => $accountType,
+                    'type' => $accountTypeName,
                     'accounts' => $accounts->toArray(),
                     'total' => $total,
                 ];
-            } elseif (in_array($accountType, $fixedAssetTypes)) {
+            } elseif (str_contains($accountTypeLower, 'equipment') || 
+                      str_contains($accountTypeLower, 'furniture') ||
+                      str_contains($accountTypeLower, 'vehicle') ||
+                      str_contains($accountTypeLower, 'building') ||
+                      str_contains($accountTypeLower, 'land') ||
+                      str_contains($accountTypeLower, 'fixed')) {
                 $assets['fixed_assets'][] = [
-                    'type' => $accountType,
+                    'type' => $accountTypeName,
                     'accounts' => $accounts->toArray(),
                     'total' => $total,
                 ];
             } else {
                 $assets['other_assets'][] = [
-                    'type' => $accountType,
+                    'type' => $accountTypeName,
                     'accounts' => $accounts->toArray(),
                     'total' => $total,
                 ];
@@ -176,7 +202,7 @@ class BalanceSheetController extends Controller
     /**
      * Prepare liabilities section.
      */
-    private function prepareLiabilities($groupedBalances, $asOfDate)
+    private function prepareLiabilities($liabilitiesCollection, $asOfDate)
     {
         $liabilities = [
             'current_liabilities' => [],
@@ -184,23 +210,25 @@ class BalanceSheetController extends Controller
             'total' => 0,
         ];
 
-        // Define liability account types
-        $currentLiabilityTypes = ['Accounts Payable', 'Accrued Expenses', 'Short-term Loans', 'Tax Payable'];
-        $longTermLiabilityTypes = ['Long-term Loans', 'Bonds Payable', 'Mortgage Payable'];
+        // Group by account type name
+        $groupedByType = $liabilitiesCollection->groupBy('account_type');
 
-        foreach ($groupedBalances as $accountTypeId => $accounts) {
-            $accountType = $accounts->first()['account_type'];
+        foreach ($groupedByType as $accountTypeName => $accounts) {
             $total = $accounts->sum('balance');
-
-            if (in_array($accountType, $currentLiabilityTypes)) {
-                $liabilities['current_liabilities'][] = [
-                    'type' => $accountType,
+            $accountTypeLower = strtolower($accountTypeName);
+            
+            if (str_contains($accountTypeLower, 'long') || 
+                str_contains($accountTypeLower, 'mortgage') ||
+                str_contains($accountTypeLower, 'bond')) {
+                $liabilities['long_term_liabilities'][] = [
+                    'type' => $accountTypeName,
                     'accounts' => $accounts->toArray(),
                     'total' => $total,
                 ];
-            } elseif (in_array($accountType, $longTermLiabilityTypes)) {
-                $liabilities['long_term_liabilities'][] = [
-                    'type' => $accountType,
+            } else {
+                // Default to current liabilities
+                $liabilities['current_liabilities'][] = [
+                    'type' => $accountTypeName,
                     'accounts' => $accounts->toArray(),
                     'total' => $total,
                 ];
@@ -218,33 +246,53 @@ class BalanceSheetController extends Controller
     /**
      * Prepare equity section.
      */
-    private function prepareEquity($groupedBalances, $asOfDate)
+    private function prepareEquity($equityCollection, $asOfDate, $revenueCollection = null, $expensesCollection = null)
     {
         $equity = [
             'owner_equity' => [],
             'retained_earnings' => [],
+            'net_income' => 0,
             'total' => 0,
         ];
 
-        // Define equity account types
-        $ownerEquityTypes = ['Owner Capital', 'Share Capital', 'Paid-in Capital'];
-        $retainedEarningsTypes = ['Retained Earnings', 'Current Earnings', 'Profit/Loss'];
+        // Group equity accounts by account type name
+        $groupedByType = $equityCollection->groupBy('account_type');
 
-        foreach ($groupedBalances as $accountTypeId => $accounts) {
-            $accountType = $accounts->first()['account_type'];
+        foreach ($groupedByType as $accountTypeName => $accounts) {
             $total = $accounts->sum('balance');
-
-            if (in_array($accountType, $ownerEquityTypes)) {
-                $equity['owner_equity'][] = [
-                    'type' => $accountType,
+            $accountTypeLower = strtolower($accountTypeName);
+            
+            if (str_contains($accountTypeLower, 'retained') || 
+                str_contains($accountTypeLower, 'earnings') ||
+                str_contains($accountTypeLower, 'profit') ||
+                str_contains($accountTypeLower, 'loss')) {
+                $equity['retained_earnings'][] = [
+                    'type' => $accountTypeName,
                     'accounts' => $accounts->toArray(),
                     'total' => $total,
                 ];
-            } elseif (in_array($accountType, $retainedEarningsTypes)) {
-                $equity['retained_earnings'][] = [
-                    'type' => $accountType,
+            } else {
+                // Default to owner equity (capital, share capital, etc.)
+                $equity['owner_equity'][] = [
+                    'type' => $accountTypeName,
                     'accounts' => $accounts->toArray(),
                     'total' => $total,
+                ];
+            }
+        }
+
+        // Calculate net income from revenue and expenses (if provided)
+        if ($revenueCollection && $expensesCollection) {
+            $totalRevenue = $revenueCollection->sum('balance');
+            $totalExpenses = $expensesCollection->sum('balance');
+            $equity['net_income'] = $totalRevenue - $totalExpenses;
+            
+            // Add net income to retained earnings if not zero
+            if (abs($equity['net_income']) > 0.01) {
+                $equity['retained_earnings'][] = [
+                    'type' => 'Net Income (Revenue - Expenses)',
+                    'accounts' => [],
+                    'total' => $equity['net_income'],
                 ];
             }
         }

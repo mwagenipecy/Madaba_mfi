@@ -61,12 +61,20 @@
                     <p class="text-gray-600 text-sm mb-4">{{ optional($category->accountType)->name }} category</p>
                     <div class="space-y-2">
                         <div class="flex justify-between text-sm">
-                            <span class="text-gray-600">Total Balance:</span>
-                            <span class="font-semibold {{ $balanceColor }}">TZS {{ number_format($category->total_balance ?? 0, 2) }}</span>
+                            <span class="text-gray-600">Main Account Balance:</span>
+                            <span class="font-semibold {{ $balanceColor }}">TZS {{ number_format($category->calculated_balance ?? 0, 2) }}</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-gray-600">Sub-Accounts Balance:</span>
+                            <span class="font-semibold {{ $balanceColor }}">TZS {{ number_format(($category->total_balance ?? 0) - ($category->calculated_balance ?? 0), 2) }}</span>
+                        </div>
+                        <div class="flex justify-between text-sm pt-2 border-t border-gray-200">
+                            <span class="text-gray-700 font-medium">Total Balance:</span>
+                            <span class="font-bold text-lg {{ $balanceColor }}">TZS {{ number_format($category->total_balance ?? 0, 2) }}</span>
                         </div>
                         <div class="flex justify-between text-sm">
                             <span class="text-gray-600">Sub-Accounts:</span>
-                            <span class="font-semibold">{{ $category->sub_accounts_count }}</span>
+                            <span class="font-semibold">{{ $category->child_accounts_count ?? $category->sub_accounts_count ?? 0 }}</span>
                         </div>
                     </div>
                     <div class="mt-4 pt-4 border-t border-gray-200">

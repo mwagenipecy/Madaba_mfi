@@ -15,10 +15,14 @@
 
         <!-- Summary -->
         <div class="bg-white rounded-lg shadow-sm p-6">
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div>
                     <p class="text-sm text-gray-600">Category</p>
                     <p class="text-lg font-semibold text-gray-900">{{ optional($category->accountType)->name ?? 'Category' }}</p>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-600">Main Account Balance</p>
+                    <p class="text-lg font-semibold text-gray-900">TZS {{ number_format($category->calculated_balance ?? 0, 2) }}</p>
                 </div>
                 <div>
                     <p class="text-sm text-gray-600">Total Sub-Accounts</p>
@@ -26,7 +30,7 @@
                 </div>
                 <div>
                     <p class="text-sm text-gray-600">Total Balance</p>
-                    <p class="text-lg font-semibold text-gray-900">TZS {{ number_format($totalBalance, 2) }}</p>
+                    <p class="text-lg font-semibold text-green-600">TZS {{ number_format($totalBalance, 2) }}</p>
                 </div>
             </div>
         </div>
@@ -56,7 +60,7 @@
                                         {{ ucfirst($account->status) }}
                                     </span>
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold">TZS {{ number_format($account->balance, 2) }}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold">TZS {{ number_format($account->calculated_balance ?? $account->balance ?? 0, 2) }}</td>
                             </tr>
                         @empty
                             <tr>

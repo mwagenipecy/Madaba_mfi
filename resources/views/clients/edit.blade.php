@@ -10,9 +10,12 @@
                         </a>
                     </div>
 
-                    <form method="POST" action="{{ route('clients.update', $client) }}" class="space-y-6">
+                    <form method="POST" action="{{ route('clients.update', $client) }}" enctype="multipart/form-data" class="space-y-6">
                         @csrf
                         @method('PUT')
+                        
+                        <!-- Hidden fields for required data -->
+                        <input type="hidden" name="organization_id" value="{{ $client->organization_id }}">
 
                         <!-- Client Type -->
                         <div class="bg-gray-50 rounded-lg p-6">
@@ -372,6 +375,115 @@
                             </div>
                         </div>
 
+                        <!-- KYC Documents -->
+                        <div class="bg-gray-50 rounded-lg p-6">
+                            <h2 class="text-lg font-semibold text-gray-900 mb-4">KYC Documents</h2>
+                            <p class="text-sm text-gray-600 mb-4">Upload additional KYC documents or manage existing ones. Supported formats: PDF, JPG, PNG, DOC, DOCX (Max 10MB per file)</p>
+                            
+                            <!-- Existing Documents -->
+                            @if($client->kyc_documents && count($client->kyc_documents) > 0)
+                            <div class="mb-6">
+                                <h3 class="text-md font-medium text-gray-900 mb-3">Existing Documents</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    @foreach($client->kyc_documents as $index => $document)
+                                        <div class="border border-gray-200 rounded-lg p-3 bg-white">
+                                            <div class="flex items-start justify-between mb-2">
+                                                <div class="flex-1 min-w-0">
+                                                    <h4 class="font-medium text-gray-900 text-sm capitalize truncate">{{ str_replace('_', ' ', $document['type'] ?? 'Document') }}</h4>
+                                                    @if(isset($document['description']) && $document['description'])
+                                                        <p class="text-xs text-gray-600 mt-1 truncate">{{ $document['description'] }}</p>
+                                                    @endif
+                                                </div>
+                                                <span class="px-2 py-1 rounded-full text-xs font-medium ml-2 flex-shrink-0
+                                                    {{ ($document['status'] ?? 'pending') === 'approved' ? 'bg-green-100 text-green-800' : 
+                                                       (($document['status'] ?? 'pending') === 'rejected' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800') }}">
+                                                    {{ ucfirst($document['status'] ?? 'pending') }}
+                                                </span>
+                                            </div>
+                                            <div class="text-xs text-gray-500 mb-2">
+                                                <div class="truncate">{{ $document['name'] ?? 'Unknown' }}</div>
+                                                @if(isset($document['size']))
+                                                    <div>{{ number_format($document['size'] / 1024, 2) }} KB</div>
+                                                @endif
+                                            </div>
+                                            <div class="flex space-x-2">
+                                                @php
+                                                    $fileUrl = asset('storage/' . $document['path']);
+                                                @endphp
+                                                <a href="{{ $fileUrl }}" target="_blank" 
+                                                   class="flex-1 bg-green-600 hover:bg-green-700 text-white text-center px-2 py-1 rounded text-xs font-medium transition-colors">
+                                                    View
+                                                </a>
+                                                <a href="{{ $fileUrl }}" download="{{ $document['name'] ?? 'document' }}" 
+                                                   class="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-center px-2 py-1 rounded text-xs font-medium transition-colors">
+                                                    Download
+                                                </a>
+                                                <button type="button" onclick="removeDocument({{ $index }})" 
+                                                        class="bg-red-100 hover:bg-red-200 text-red-700 px-2 py-1 rounded text-xs font-medium transition-colors">
+                                                    Remove
+                                                </button>
+                                            </div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                            @endif
+                            
+                            <!-- New Document Upload Fields -->
+                            <div id="kyc_documents_container" class="space-y-4">
+                                <div class="kyc-document-item border border-gray-200 rounded-lg p-4 bg-white">
+                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">Document Type</label>
+                                            <select name="kyc_document_types[]" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                                <option value="">Select document type</option>
+                                                <option value="national_id">National ID</option>
+                                                <option value="passport">Passport</option>
+                                                <option value="driving_license">Driving License</option>
+                                                <option value="birth_certificate">Birth Certificate</option>
+                                                <option value="utility_bill">Utility Bill</option>
+                                                <option value="bank_statement">Bank Statement</option>
+                                                <option value="business_registration">Business Registration</option>
+                                                <option value="tax_certificate">Tax Certificate</option>
+                                                <option value="proof_of_address">Proof of Address</option>
+                                                <option value="employment_letter">Employment Letter</option>
+                                                <option value="salary_slip">Salary Slip</option>
+                                                <option value="other">Other</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">Document File</label>
+                                            <input type="file" name="kyc_documents[]" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" 
+                                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100">
+                                        </div>
+                                        <div class="flex items-end">
+                                            <div class="flex-1">
+                                                <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                                                <input type="text" name="kyc_document_descriptions[]" 
+                                                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500" 
+                                                       placeholder="Optional">
+                                            </div>
+                                            <button type="button" class="ml-2 px-3 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors remove-document" title="Remove this field">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Hidden field to track removed documents -->
+                            <input type="hidden" name="removed_documents" id="removed_documents" value="">
+                            
+                            <!-- Add More Documents Button -->
+                            <div class="mt-4">
+                                <button type="button" id="add_kyc_document" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors text-sm">
+                                    + Add Another Document
+                                </button>
+                            </div>
+                        </div>
+
                         <!-- Submit Buttons -->
                         <div class="flex justify-end space-x-3">
                             <a href="{{ route('clients.show', $client) }}" 
@@ -410,6 +522,78 @@
             
             // Initial check
             toggleBusinessInfo();
+        });
+
+        // Track removed documents
+        let removedDocuments = [];
+        
+        function removeDocument(index) {
+            if (confirm('Are you sure you want to remove this document? This action cannot be undone.')) {
+                removedDocuments.push(index);
+                document.getElementById('removed_documents').value = JSON.stringify(removedDocuments);
+                // Hide the document card
+                event.target.closest('.border').style.display = 'none';
+            }
+        }
+
+        // Add more KYC document fields
+        document.getElementById('add_kyc_document').addEventListener('click', function() {
+            const container = document.getElementById('kyc_documents_container');
+            const newDocument = document.createElement('div');
+            newDocument.className = 'kyc-document-item border border-gray-200 rounded-lg p-4 bg-white';
+            newDocument.innerHTML = `
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Document Type</label>
+                        <select name="kyc_document_types[]" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                            <option value="">Select document type</option>
+                            <option value="national_id">National ID</option>
+                            <option value="passport">Passport</option>
+                            <option value="driving_license">Driving License</option>
+                            <option value="birth_certificate">Birth Certificate</option>
+                            <option value="utility_bill">Utility Bill</option>
+                            <option value="bank_statement">Bank Statement</option>
+                            <option value="business_registration">Business Registration</option>
+                            <option value="tax_certificate">Tax Certificate</option>
+                            <option value="proof_of_address">Proof of Address</option>
+                            <option value="employment_letter">Employment Letter</option>
+                            <option value="salary_slip">Salary Slip</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Document File</label>
+                        <input type="file" name="kyc_documents[]" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" 
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100">
+                    </div>
+                    <div class="flex items-end">
+                        <div class="flex-1">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                            <input type="text" name="kyc_document_descriptions[]" 
+                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500" 
+                                   placeholder="Optional">
+                        </div>
+                        <button type="button" class="ml-2 px-3 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-colors remove-document" title="Remove this field">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            `;
+            container.appendChild(newDocument);
+            
+            // Add remove functionality
+            newDocument.querySelector('.remove-document').addEventListener('click', function() {
+                newDocument.remove();
+            });
+        });
+
+        // Add remove functionality to initial document
+        document.querySelectorAll('.remove-document').forEach(button => {
+            button.addEventListener('click', function() {
+                this.closest('.kyc-document-item').remove();
+            });
         });
     </script>
 </x-app-shell>

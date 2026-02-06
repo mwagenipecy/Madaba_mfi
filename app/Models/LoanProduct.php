@@ -22,6 +22,7 @@ class LoanProduct extends Model
         'interest_calculation_method',
         'min_tenure_months',
         'max_tenure_months',
+        'processing_fee_type',
         'processing_fee',
         'late_fee',
         'repayment_frequency',

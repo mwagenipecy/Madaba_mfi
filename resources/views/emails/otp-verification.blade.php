@@ -27,15 +27,15 @@
         .logo {
             width: 60px;
             height: 60px;
-            background: linear-gradient(135deg, #008000, #006600);
-            border-radius: 12px;
             margin: 0 auto 20px;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: 24px;
+        }
+        .logo img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
         }
         .title {
             color: #008000;
@@ -127,7 +127,9 @@
 <body>
     <div class="container">
         <div class="header">
-            <div class="logo">W</div>
+            <div class="logo">
+                <img src="{{ config('app.url') }}/logo/wibook.png" alt="Wibook Financing Logo" />
+            </div>
             <h1 class="title">Wibook Financing</h1>
             <p class="subtitle">Secure Login Verification</p>
         </div>

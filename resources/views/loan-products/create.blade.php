@@ -130,9 +130,19 @@
                             </select>
                         </div>
 
+                        <!-- Tenure Unit -->
+                        <div>
+                            <label for="tenure_unit" class="block text-sm font-medium text-gray-700 mb-2">Tenure Unit *</label>
+                            <select id="tenure_unit" name="tenure_unit" required
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                <option value="months">Months</option>
+                                <option value="days">Days</option>
+                            </select>
+                        </div>
+
                         <!-- Minimum Tenure -->
                         <div>
-                            <label for="min_tenure_months" class="block text-sm font-medium text-gray-700 mb-2">Minimum Tenure (Months) *</label>
+                            <label for="min_tenure_months" id="min_tenure_label" class="block text-sm font-medium text-gray-700 mb-2">Minimum Tenure (Months) *</label>
                             <input type="number" id="min_tenure_months" name="min_tenure_months" min="1" required
                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                    placeholder="1">
@@ -140,7 +150,7 @@
 
                         <!-- Maximum Tenure -->
                         <div>
-                            <label for="max_tenure_months" class="block text-sm font-medium text-gray-700 mb-2">Maximum Tenure (Months) *</label>
+                            <label for="max_tenure_months" id="max_tenure_label" class="block text-sm font-medium text-gray-700 mb-2">Maximum Tenure (Months) *</label>
                             <input type="number" id="max_tenure_months" name="max_tenure_months" min="1" required
                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                    placeholder="12">
@@ -153,16 +163,29 @@
                     <h3 class="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Fees & Charges</h3>
                     
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Processing Fee Type -->
+                        <div>
+                            <label for="processing_fee_type" class="block text-sm font-medium text-gray-700 mb-2">Processing Fee Type</label>
+                            <select id="processing_fee_type" name="processing_fee_type"
+                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                <option value="fixed">Fixed Amount</option>
+                                <option value="percent">Percentage (%)</option>
+                            </select>
+                        </div>
+
                         <!-- Processing Fee -->
                         <div>
-                            <label for="processing_fee" class="block text-sm font-medium text-gray-700 mb-2">Processing Fee</label>
+                            <label for="processing_fee" id="processing_fee_label" class="block text-sm font-medium text-gray-700 mb-2">Processing Fee</label>
                             <div class="relative">
-                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none" id="processing_fee_prefix">
                                     <span class="text-gray-500 sm:text-sm">TZS</span>
                                 </div>
-                                <input type="number" id="processing_fee" name="processing_fee" step="0.01" min="0"
+                                <input type="number" id="processing_fee" name="processing_fee" step="0.01" min="0" max="100"
                                        class="w-full pl-12 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                        placeholder="0.00">
+                                <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none hidden" id="processing_fee_suffix">
+                                    <span class="text-gray-500 sm:text-sm">%</span>
+                                </div>
                             </div>
                         </div>
 
@@ -357,6 +380,46 @@
                 collateralRatioField.style.display = 'none';
                 collateralRatioInput.required = false;
                 collateralRatioInput.value = '';
+            }
+        });
+
+        // Handle tenure unit change
+        document.getElementById('tenure_unit').addEventListener('change', function() {
+            const minLabel = document.getElementById('min_tenure_label');
+            const maxLabel = document.getElementById('max_tenure_label');
+            
+            if (this.value === 'days') {
+                minLabel.textContent = 'Min Days *';
+                maxLabel.textContent = 'Max Days *';
+            } else {
+                minLabel.textContent = 'Minimum Tenure (Months) *';
+                maxLabel.textContent = 'Maximum Tenure (Months) *';
+            }
+        });
+
+        // Handle processing fee type change
+        document.getElementById('processing_fee_type').addEventListener('change', function() {
+            const feeInput = document.getElementById('processing_fee');
+            const feeLabel = document.getElementById('processing_fee_label');
+            const feePrefix = document.getElementById('processing_fee_prefix');
+            const feeSuffix = document.getElementById('processing_fee_suffix');
+            
+            if (this.value === 'percent') {
+                feeLabel.textContent = 'Processing Fee (%)';
+                feePrefix.classList.add('hidden');
+                feeSuffix.classList.remove('hidden');
+                feeInput.classList.remove('pl-12');
+                feeInput.classList.add('pr-8');
+                feeInput.max = 100;
+                feeInput.placeholder = '0.00';
+            } else {
+                feeLabel.textContent = 'Processing Fee';
+                feePrefix.classList.remove('hidden');
+                feeSuffix.classList.add('hidden');
+                feeInput.classList.add('pl-12');
+                feeInput.classList.remove('pr-8');
+                feeInput.removeAttribute('max');
+                feeInput.placeholder = '0.00';
             }
         });
 
