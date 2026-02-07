@@ -177,6 +177,63 @@
     <!-- Success/Error Messages -->
     <div id="alertContainer" class="fixed top-4 right-4 z-50"></div>
 
+    <!-- Payment Receipt Modal -->
+    <div id="receiptModal" class="fixed inset-0 bg-gray-800 bg-opacity-75 overflow-y-auto h-full w-full hidden z-50 flex items-start justify-center pt-10">
+        <div class="relative bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 my-8">
+            <!-- Modal Header (non-printable) -->
+            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 no-print">
+                <h3 class="text-lg font-semibold text-gray-900">Payment Receipt</h3>
+                <div class="flex items-center space-x-2">
+                    <button onclick="printReceipt()" class="inline-flex items-center px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">
+                        <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
+                        </svg>
+                        Print
+                    </button>
+                    <button onclick="closeReceiptModal()" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Printable Receipt Content -->
+            <div id="receiptContent" class="px-6 py-5">
+                <!-- Receipt will be populated by JS -->
+            </div>
+
+            <!-- Modal Footer (non-printable) -->
+            <div class="px-6 py-4 border-t border-gray-200 flex justify-between no-print">
+                <button onclick="closeReceiptModal()" class="px-4 py-2 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors">
+                    Close
+                </button>
+                <button onclick="printReceipt()" class="px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors inline-flex items-center">
+                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
+                    </svg>
+                    Print Receipt
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Print-only styles -->
+    <style>
+        @media print {
+            body * { visibility: hidden; }
+            #receiptContent, #receiptContent * { visibility: visible; }
+            #receiptContent {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                padding: 20px;
+            }
+            .no-print { display: none !important; }
+        }
+    </style>
+
     <script>
         let selectedClient = null;
         let searchTimeout = null;
@@ -377,6 +434,12 @@
                 if (data.success) {
                     showAlert(data.message, 'success');
                     this.reset();
+                    
+                    // Show receipt if available
+                    if (data.receipt) {
+                        showReceipt(data.receipt);
+                    }
+                    
                     clearClientSelection();
                 } else {
                     showAlert(data.message, 'error');
@@ -389,6 +452,177 @@
                 showAlert('An error occurred while processing the payment', 'error');
             });
         });
+
+        // ==================== RECEIPT FUNCTIONS ====================
+        
+        function showReceipt(receipt) {
+            const org = receipt.organization;
+            const client = receipt.client;
+            const loan = receipt.loan;
+            const payment = receipt.payment;
+
+            let loanSection = '';
+            if (loan) {
+                loanSection = `
+                    <div style="margin-bottom: 16px;">
+                        <div style="font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Loan Details</div>
+                        <div style="background: #f9fafb; border-radius: 8px; padding: 12px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                <span style="color: #6b7280; font-size: 13px;">Loan Number</span>
+                                <span style="font-weight: 600; font-size: 13px; color: #111827;">${loan.loan_number}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                <span style="color: #6b7280; font-size: 13px;">Product</span>
+                                <span style="font-weight: 500; font-size: 13px; color: #111827;">${loan.product_name}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                <span style="color: #6b7280; font-size: 13px;">Balance Before Payment</span>
+                                <span style="font-weight: 500; font-size: 13px; color: #111827;">TZS ${formatNumber(loan.outstanding_before)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; padding-top: 6px; border-top: 1px dashed #d1d5db;">
+                                <span style="color: #059669; font-weight: 600; font-size: 13px;">Balance After Payment</span>
+                                <span style="font-weight: 700; font-size: 13px; color: #059669;">TZS ${formatNumber(loan.outstanding_after)}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            let chargeSection = '';
+            if (receipt.charge) {
+                chargeSection = `
+                    <div style="margin-bottom: 16px;">
+                        <div style="font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Charge Details</div>
+                        <div style="background: #f9fafb; border-radius: 8px; padding: 12px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                <span style="color: #6b7280; font-size: 13px;">Charge Type</span>
+                                <span style="font-weight: 500; font-size: 13px; color: #111827;">${receipt.charge.type}</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const receiptHTML = `
+                <!-- Organization Header -->
+                <div style="text-align: center; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 2px solid #059669;">
+                    ${org.logo ? `<img src="${org.logo}" alt="Logo" style="height: 48px; margin: 0 auto 8px;">` : ''}
+                    <h2 style="font-size: 20px; font-weight: 700; color: #111827; margin: 0;">${org.name}</h2>
+                    ${org.address ? `<p style="font-size: 12px; color: #6b7280; margin: 2px 0;">${org.address}${org.city ? ', ' + org.city : ''}</p>` : ''}
+                    ${org.phone ? `<p style="font-size: 12px; color: #6b7280; margin: 2px 0;">Tel: ${org.phone}${org.email ? ' | ' + org.email : ''}</p>` : ''}
+                </div>
+
+                <!-- Receipt Title & Number -->
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <div style="display: inline-block; background: linear-gradient(135deg, #059669, #047857); color: white; padding: 6px 20px; border-radius: 20px; font-size: 13px; font-weight: 600; letter-spacing: 0.05em;">
+                        PAYMENT RECEIPT
+                    </div>
+                    <p style="font-size: 13px; color: #6b7280; margin-top: 8px;">
+                        Receipt No: <span style="font-weight: 700; color: #111827;">${receipt.receipt_number}</span>
+                    </p>
+                    <p style="font-size: 13px; color: #6b7280;">
+                        ${receipt.date} at ${receipt.time}
+                    </p>
+                </div>
+
+                <!-- Client Details -->
+                <div style="margin-bottom: 16px;">
+                    <div style="font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Received From</div>
+                    <div style="background: #f9fafb; border-radius: 8px; padding: 12px;">
+                        <div style="font-weight: 600; font-size: 15px; color: #111827;">${client.name}</div>
+                        <div style="font-size: 13px; color: #6b7280;">Client #: ${client.client_number}</div>
+                        <div style="font-size: 13px; color: #6b7280;">Phone: ${client.phone}</div>
+                    </div>
+                </div>
+
+                <!-- Payment Details -->
+                <div style="margin-bottom: 16px;">
+                    <div style="font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Payment Details</div>
+                    <div style="border: 2px solid #059669; border-radius: 12px; padding: 16px; background: linear-gradient(135deg, #ecfdf5, #f0fdf4);">
+                        <div style="text-align: center; margin-bottom: 12px;">
+                            <div style="font-size: 12px; color: #059669; font-weight: 500;">Amount Paid</div>
+                            <div style="font-size: 28px; font-weight: 800; color: #059669;">TZS ${formatNumber(payment.amount)}</div>
+                        </div>
+                        <div style="border-top: 1px dashed #a7f3d0; padding-top: 12px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                                <span style="color: #6b7280; font-size: 13px;">Payment Type</span>
+                                <span style="font-weight: 600; font-size: 13px; color: #111827;">${payment.type}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                                <span style="color: #6b7280; font-size: 13px;">Payment Method</span>
+                                <span style="font-weight: 500; font-size: 13px; color: #111827;">${payment.method}</span>
+                            </div>
+                            ${payment.reference !== 'N/A' ? `
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                                <span style="color: #6b7280; font-size: 13px;">Reference</span>
+                                <span style="font-weight: 500; font-size: 13px; color: #111827;">${payment.reference}</span>
+                            </div>` : ''}
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="color: #6b7280; font-size: 13px;">Collection Account</span>
+                                <span style="font-weight: 500; font-size: 13px; color: #111827;">${payment.account}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                ${loanSection}
+                ${chargeSection}
+
+                ${payment.notes ? `
+                <div style="margin-bottom: 16px;">
+                    <div style="font-size: 11px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">Notes</div>
+                    <div style="background: #f9fafb; border-radius: 8px; padding: 12px; font-size: 13px; color: #374151; font-style: italic;">${payment.notes}</div>
+                </div>` : ''}
+
+                <!-- Footer -->
+                <div style="border-top: 1px solid #e5e7eb; padding-top: 12px; margin-top: 16px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                        <span style="color: #6b7280; font-size: 12px;">Processed By</span>
+                        <span style="font-weight: 500; font-size: 12px; color: #111827;">${receipt.processed_by}</span>
+                    </div>
+                </div>
+
+                <!-- Signature Area -->
+                <div style="margin-top: 28px; display: flex; justify-content: space-between;">
+                    <div style="text-align: center; width: 45%;">
+                        <div style="border-top: 1px solid #9ca3af; padding-top: 4px; margin-top: 36px;">
+                            <span style="font-size: 11px; color: #6b7280;">Officer Signature</span>
+                        </div>
+                    </div>
+                    <div style="text-align: center; width: 45%;">
+                        <div style="border-top: 1px solid #9ca3af; padding-top: 4px; margin-top: 36px;">
+                            <span style="font-size: 11px; color: #6b7280;">Client Signature</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Thank You -->
+                <div style="text-align: center; margin-top: 20px; padding-top: 12px; border-top: 2px solid #059669;">
+                    <p style="font-size: 12px; color: #6b7280; margin: 0;">Thank you for your payment!</p>
+                    <p style="font-size: 11px; color: #9ca3af; margin: 4px 0 0;">This is a computer-generated receipt.</p>
+                </div>
+            `;
+
+            document.getElementById('receiptContent').innerHTML = receiptHTML;
+            document.getElementById('receiptModal').classList.remove('hidden');
+        }
+
+        function closeReceiptModal() {
+            document.getElementById('receiptModal').classList.add('hidden');
+        }
+
+        function printReceipt() {
+            window.print();
+        }
+
+        // Close receipt modal on outside click
+        document.getElementById('receiptModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeReceiptModal();
+            }
+        });
+
+        // ==================== END RECEIPT FUNCTIONS ====================
 
         function clearClientSelection() {
             selectedClient = null;

@@ -73,28 +73,52 @@ class DashboardController extends Controller
 
     private function getBasicStats($organizationId, $branchId)
     {
-        $query = Loan::where('organization_id', $organizationId);
-        if ($branchId) {
-            $query->where('branch_id', $branchId);
-        }
+        // Base query builder - clone for each stat to avoid mutation
+        $baseQuery = Loan::where('organization_id', $organizationId)
+            ->when($branchId, function($q) use ($branchId) {
+                return $q->where('branch_id', $branchId);
+            });
 
-        $totalLoans = $query->count();
-        $activeLoans = $query->where('status', 'active')->count();
-        $overdueLoans = $query->where('status', 'overdue')->count();
+        $totalLoans = (clone $baseQuery)->count();
+        $activeLoans = (clone $baseQuery)->where('status', 'active')->count();
+        $overdueLoans = (clone $baseQuery)->where('status', 'overdue')->count();
+
         $totalClients = Client::where('organization_id', $organizationId)
             ->when($branchId, function($q) use ($branchId) {
                 return $q->where('branch_id', $branchId);
             })->count();
 
-        $totalPortfolio = $query->where('status', 'active')->sum('approved_amount');
-        $totalDisbursed = $query->where('status', '!=', 'pending')->sum('approved_amount');
+        // Total portfolio = outstanding loans (active + overdue + disbursed)
+        $totalPortfolio = (clone $baseQuery)
+            ->whereIn('status', ['active', 'overdue', 'disbursed'])
+            ->selectRaw('SUM(COALESCE(approved_amount, loan_amount)) as total')
+            ->value('total') ?? 0;
+
+        // Total disbursed = all non-pending/non-cancelled loans
+        $totalDisbursed = (clone $baseQuery)
+            ->whereNotIn('status', ['pending', 'under_review', 'assessed', 'rejected', 'cancelled'])
+            ->selectRaw('SUM(COALESCE(approved_amount, loan_amount)) as total')
+            ->value('total') ?? 0;
+
+        // Outstanding amount from schedules (more accurate portfolio)
+        $outstandingFromSchedules = (clone $baseQuery)
+            ->whereIn('status', ['active', 'overdue', 'disbursed'])
+            ->with('schedules')
+            ->get()
+            ->sum(function($loan) {
+                $outstanding = $loan->schedules
+                    ->whereIn('status', ['pending', 'overdue', 'partial'])
+                    ->sum('outstanding_amount');
+                // If no schedules yet, use approved/loan amount
+                return $outstanding > 0 ? $outstanding : ($loan->approved_amount ?? $loan->loan_amount);
+            });
 
         return [
             'total_loans' => $totalLoans,
             'active_loans' => $activeLoans,
             'overdue_loans' => $overdueLoans,
             'total_clients' => $totalClients,
-            'total_portfolio' => $totalPortfolio,
+            'total_portfolio' => $outstandingFromSchedules > 0 ? $outstandingFromSchedules : $totalPortfolio,
             'total_disbursed' => $totalDisbursed,
         ];
     }
@@ -114,25 +138,26 @@ class DashboardController extends Controller
 
     private function calculatePAR($organizationId, $branchId, $days)
     {
-        $query = Loan::where('organization_id', $organizationId)
-            ->where('status', 'active');
+        $baseQuery = Loan::where('organization_id', $organizationId)
+            ->whereIn('status', ['active', 'overdue'])
+            ->when($branchId, function($q) use ($branchId) {
+                return $q->where('branch_id', $branchId);
+            });
 
-        if ($branchId) {
-            $query->where('branch_id', $branchId);
-        }
-
-        $loans = $query->with(['schedules' => function($q) use ($days) {
-            $q->where('status', 'overdue')
+        $loans = (clone $baseQuery)->with(['schedules' => function($q) use ($days) {
+            $q->whereIn('status', ['overdue', 'partial'])
               ->where('due_date', '<', Carbon::now()->subDays($days));
         }])->get();
 
         $overdueAmount = $loans->sum(function($loan) {
-            return $loan->schedules->sum('total_amount');
+            return $loan->schedules->sum('outstanding_amount');
         });
 
-        $totalPortfolio = $query->sum('approved_amount');
+        $totalPortfolio = (clone $baseQuery)
+            ->selectRaw('SUM(COALESCE(approved_amount, loan_amount)) as total')
+            ->value('total') ?? 0;
 
-        return $totalPortfolio > 0 ? ($overdueAmount / $totalPortfolio) * 100 : 0;
+        return $totalPortfolio > 0 ? round(($overdueAmount / $totalPortfolio) * 100, 2) : 0;
     }
 
     private function getMonthlyPerformance($organizationId, $branchId)
@@ -179,13 +204,11 @@ class DashboardController extends Controller
 
     private function getLoanStatusDistribution($organizationId, $branchId)
     {
-        $query = Loan::where('organization_id', $organizationId);
-
-        if ($branchId) {
-            $query->where('branch_id', $branchId);
-        }
-
-        return $query->selectRaw('status, COUNT(*) as count')
+        return Loan::where('organization_id', $organizationId)
+            ->when($branchId, function($q) use ($branchId) {
+                return $q->where('branch_id', $branchId);
+            })
+            ->selectRaw('status, COUNT(*) as count')
             ->groupBy('status')
             ->get();
     }
@@ -248,15 +271,20 @@ class DashboardController extends Controller
                 return $query->where('branch_id', $branchId);
             })
             ->with(['client', 'loanProduct'])
-            ->latest('disbursement_date')
+            ->latest('created_at')
             ->limit(5)
             ->get()
+            ->filter(function($loan) {
+                return $loan->client !== null;
+            })
             ->map(function($loan) {
+                $clientName = $loan->client ? "{$loan->client->first_name} {$loan->client->last_name}" : 'Unknown Client';
+                $amount = $loan->approved_amount ?? $loan->loan_amount ?? 0;
                 return [
                     'type' => 'disbursement',
-                    'title' => 'Loan Disbursed',
-                    'description' => "{$loan->client->first_name} {$loan->client->last_name} - " . number_format($loan->approved_amount, 2),
-                    'date' => $loan->disbursement_date,
+                    'title' => 'Loan ' . ucfirst($loan->status),
+                    'description' => "{$clientName} - " . number_format($amount, 2),
+                    'date' => $loan->disbursement_date ?? $loan->created_at,
                     'icon' => 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1'
                 ];
             });
@@ -275,11 +303,15 @@ class DashboardController extends Controller
         ->latest('paid_date')
         ->limit(5)
         ->get()
+        ->filter(function($schedule) {
+            return $schedule->loan && $schedule->loan->client;
+        })
         ->map(function($schedule) {
+            $clientName = $schedule->loan->client ? "{$schedule->loan->client->first_name} {$schedule->loan->client->last_name}" : 'Unknown Client';
             return [
                 'type' => 'payment',
                 'title' => 'Payment Received',
-                'description' => "{$schedule->loan->client->first_name} {$schedule->loan->client->last_name} - " . number_format($schedule->paid_amount, 2),
+                'description' => "{$clientName} - " . number_format($schedule->paid_amount ?? 0, 2),
                 'date' => $schedule->paid_date,
                 'icon' => 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z'
             ];
@@ -385,13 +417,14 @@ class DashboardController extends Controller
         return $branches->map(function($branch) use ($organizationId) {
             $activeLoans = Loan::where('organization_id', $organizationId)
                 ->where('branch_id', $branch->id)
-                ->where('status', 'active')
+                ->whereIn('status', ['active', 'overdue'])
                 ->count();
 
             $totalPortfolio = Loan::where('organization_id', $organizationId)
                 ->where('branch_id', $branch->id)
-                ->where('status', 'active')
-                ->sum('approved_amount');
+                ->whereIn('status', ['active', 'overdue', 'disbursed'])
+                ->selectRaw('SUM(COALESCE(approved_amount, loan_amount)) as total')
+                ->value('total') ?? 0;
 
             $totalClients = Client::where('organization_id', $organizationId)
                 ->where('branch_id', $branch->id)
@@ -423,13 +456,16 @@ class DashboardController extends Controller
         ->orderBy('due_date')
         ->get();
 
-        return $query->map(function($schedule) {
+        return $query->filter(function($schedule) {
+            return $schedule->loan && $schedule->loan->client;
+        })->map(function($schedule) {
             $daysDiff = Carbon::now()->diffInDays($schedule->due_date, false);
+            $client = $schedule->loan->client;
             
             return [
                 'id' => $schedule->id,
-                'client_name' => "{$schedule->loan->client->first_name} {$schedule->loan->client->last_name}",
-                'client_phone' => $schedule->loan->client->phone_number ?? 'N/A',
+                'client_name' => $client ? "{$client->first_name} {$client->last_name}" : 'Unknown Client',
+                'client_phone' => $client->phone_number ?? $client->phone ?? 'N/A',
                 'loan_product' => $schedule->loan->loanProduct->name ?? 'N/A',
                 'installment_number' => $schedule->installment_number,
                 'due_date' => $schedule->due_date,

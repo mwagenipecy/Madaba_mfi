@@ -134,6 +134,11 @@ class LoansController extends Controller
             'purpose' => 'nullable|string|max:500',
             'collateral_description' => 'nullable|string|max:1000',
             'notes' => 'nullable|string|max:1000',
+            'custom_mode' => 'nullable|in:0,1',
+            'custom_repayment_amount' => 'nullable|numeric|min:0',
+            'custom_charge_type' => 'nullable|in:percent,fixed',
+            'custom_charge_value' => 'nullable|numeric|min:0',
+            'custom_charge_amount' => 'nullable|numeric|min:0',
         ], [
             'client_id.required' => 'Please select a client.',
             'client_id.exists' => 'Selected client does not exist.',
@@ -186,13 +191,11 @@ class LoansController extends Controller
         // Get tenure value - JavaScript converts it to months before submission
         $tenureInMonths = $request->loan_tenure_months ?? $loanProduct->min_tenure_months;
         
-        // Calculate processing fee amount based on product's fee type
+        // Calculate processing fee amount
         $processingFeeAmount = 0;
         if ($request->has('processing_fee_amount') && $request->processing_fee_amount) {
-            // Use the calculated amount from JavaScript
             $processingFeeAmount = $request->processing_fee_amount;
         } else {
-            // Fallback: calculate based on product settings
             $processingFee = $loanProduct->processing_fee ?? 0;
             $processingFeeType = $loanProduct->processing_fee_type ?? 'fixed';
             
@@ -203,6 +206,45 @@ class LoansController extends Controller
             }
         }
         
+        // Determine interest rate and custom charge
+        $isCustomMode = $request->custom_mode === '1';
+        $interestRate = $request->interest_rate ?? $loanProduct->interest_rate;
+        $customChargeAmount = 0;
+        
+        // Build metadata for custom loan details
+        $metadata = [];
+        
+        if ($isCustomMode) {
+            $metadata['custom_mode'] = true;
+            
+            // Custom repayment amount per period
+            if ($request->custom_repayment_amount && $request->custom_repayment_amount > 0) {
+                $metadata['custom_repayment_amount'] = (float) $request->custom_repayment_amount;
+            }
+        }
+        
+        // Custom charge (available in both modes)
+        if ($request->custom_charge_type && $request->custom_charge_value > 0) {
+            $customChargeAmount = (float) ($request->custom_charge_amount ?? 0);
+            
+            // Recalculate server-side for safety
+            if ($request->custom_charge_type === 'percent') {
+                $customChargeAmount = ($request->loan_amount * $request->custom_charge_value) / 100;
+            } else {
+                $customChargeAmount = (float) $request->custom_charge_value;
+            }
+            
+            $metadata['custom_charge'] = [
+                'type' => $request->custom_charge_type,
+                'value' => (float) $request->custom_charge_value,
+                'amount' => $customChargeAmount,
+            ];
+        }
+        
+        // If custom repayment amount is set, keep the product interest rate as reference
+        // The schedule generation will use the custom repayment amount from metadata directly
+        // No need to back-calculate — the custom_repayment_amount in metadata drives the schedule
+        
         // Create the loan
         $loan = Loan::create([
             'loan_number' => Loan::generateLoanNumber(),
@@ -212,18 +254,20 @@ class LoansController extends Controller
             'branch_id' => $request->branch_id,
             'loan_officer_id' => $request->loan_officer_id ?? auth()->id(),
             'loan_amount' => $request->loan_amount,
-            'interest_rate' => $request->interest_rate ?? $loanProduct->interest_rate,
+            'interest_rate' => $interestRate,
             'loan_tenure_months' => $tenureInMonths,
-            'interest_calculation_method' => $request->interest_calculation_method ?? 'flat',
-            'repayment_frequency' => $request->repayment_frequency ?? 'monthly',
+            'interest_calculation_method' => $request->interest_calculation_method ?? $loanProduct->interest_calculation_method ?? 'flat',
+            'repayment_frequency' => $request->repayment_frequency ?? $loanProduct->repayment_frequency ?? 'monthly',
             'processing_fee' => $processingFeeAmount,
             'insurance_fee' => $request->insurance_fee ?? 0,
+            'other_fees' => $customChargeAmount,
             'application_date' => now()->toDateString(),
             'purpose' => $request->purpose,
             'collateral_description' => $request->collateral_description,
             'status' => 'pending',
             'approval_status' => 'pending',
             'notes' => $request->notes,
+            'metadata' => !empty($metadata) ? $metadata : null,
         ]);
 
         return redirect()->route('loans.show', $loan)
@@ -390,6 +434,7 @@ class LoansController extends Controller
         $request->validate([
             'approval_notes' => 'nullable|string|max:1000',
             'approved_amount' => 'nullable|numeric|min:0',
+            'first_payment_date' => 'nullable|date|after_or_equal:today',
         ]);
 
         // Check if user has permission to approve loans
@@ -397,27 +442,49 @@ class LoansController extends Controller
             return redirect()->back()->with('error', 'You do not have permission to approve loans.');
         }
 
-        // Update loan status
+        // Only assessed loans can be approved
+        if ($loan->status !== 'assessed') {
+            return redirect()->back()->with('error', 'Only assessed loans can be approved. Please complete the assessment first.');
+        }
+
+        $approvedAmount = $request->approved_amount ?? $loan->loan_amount;
+
+        // Update loan status to active, set approved amount, and save schedule
         $loan->update([
-            'status' => 'approved',
+            'status' => 'active',
             'approval_status' => 'approved',
             'approval_date' => now()->toDateString(),
             'approved_by' => auth()->id(),
             'approval_notes' => $request->approval_notes,
-            'approved_amount' => $request->approved_amount ?? $loan->loan_amount,
+            'approved_amount' => $approvedAmount,
+            'disbursement_date' => now()->toDateString(),
+            'first_payment_date' => $request->first_payment_date ?? now()->addDay()->toDateString(),
+            'outstanding_balance' => $approvedAmount,
         ]);
 
+        // Generate and save the payment schedule
+        $loan->refresh();
+        $loan->calculateLoanSchedule();
+
+        // Calculate maturity date from schedule
+        $lastSchedule = $loan->schedules()->orderBy('installment_number', 'desc')->first();
+        if ($lastSchedule) {
+            $loan->update([
+                'maturity_date' => $lastSchedule->due_date,
+            ]);
+        }
+
         SystemLog::log(
-            'Loan approved',
-            'Loan ' . $loan->loan_number . ' has been approved',
+            'Loan approved and activated',
+            'Loan ' . $loan->loan_number . ' has been approved, schedule generated, and set to active',
             'info',
             $loan,
             auth()->id(),
-            ['approved_amount' => $request->approved_amount ?? $loan->loan_amount, 'approval_notes' => $request->approval_notes]
+            ['approved_amount' => $approvedAmount, 'approval_notes' => $request->approval_notes]
         );
 
         return redirect()->route('loans.show', $loan)
-            ->with('success', 'Loan has been approved successfully.');
+            ->with('success', 'Loan has been approved, payment schedule saved, and loan is now active.');
     }
 
     /**
@@ -492,7 +559,7 @@ class LoansController extends Controller
     }
 
     /**
-     * Put loan under review
+     * Start review of a loan (pending → under_review)
      */
     public function putUnderReview(Loan $loan)
     {
@@ -501,21 +568,82 @@ class LoansController extends Controller
             return redirect()->back()->with('error', 'You do not have permission to review loans.');
         }
 
+        if ($loan->status !== 'pending') {
+            return redirect()->back()->with('error', 'Only pending loans can be put under review.');
+        }
+
         // Update loan status
         $loan->update([
             'status' => 'under_review',
         ]);
 
         SystemLog::log(
-            'Loan under review',
-            'Loan ' . $loan->loan_number . ' is now under review',
+            'Loan review started',
+            'Loan ' . $loan->loan_number . ' review has been started',
             'info',
             $loan,
             auth()->id()
         );
 
         return redirect()->route('loans.show', $loan)
-            ->with('success', 'Loan is now under review.');
+            ->with('success', 'Loan review has been started. You can now upload documents and perform assessment.');
+    }
+
+    /**
+     * Complete assessment of a loan (under_review → assessed)
+     */
+    public function completeAssessment(Request $request, Loan $loan)
+    {
+        $request->validate([
+            'assessment_notes' => 'nullable|string|max:2000',
+        ]);
+
+        // Check if user has permission
+        if (!in_array(auth()->user()->role, ['admin', 'manager', 'super_admin', 'loan_officer'])) {
+            return redirect()->back()->with('error', 'You do not have permission to complete loan assessment.');
+        }
+
+        if ($loan->status !== 'under_review') {
+            return redirect()->back()->with('error', 'Only loans under review can have their assessment completed.');
+        }
+
+        // Update loan status to assessed
+        $metadata = is_array($loan->metadata) ? $loan->metadata : [];
+        $metadata['assessment'] = [
+            'completed_by' => auth()->id(),
+            'completed_by_name' => auth()->user()->name,
+            'completed_at' => now()->toDateTimeString(),
+            'notes' => $request->assessment_notes,
+        ];
+
+        $loan->update([
+            'status' => 'assessed',
+            'metadata' => $metadata,
+        ]);
+
+        // Add assessment comment
+        $comments = is_array($loan->comments) ? $loan->comments : [];
+        $comments[] = [
+            'user_id' => auth()->id(),
+            'user_name' => auth()->user()->name,
+            'user_role' => auth()->user()->role,
+            'comment_type' => 'assessment',
+            'comment' => 'Assessment completed. ' . ($request->assessment_notes ?? ''),
+            'created_at' => now()->toDateTimeString(),
+        ];
+        $loan->update(['comments' => $comments]);
+
+        SystemLog::log(
+            'Loan assessment completed',
+            'Loan ' . $loan->loan_number . ' assessment has been completed and is ready for approval',
+            'info',
+            $loan,
+            auth()->id(),
+            ['assessment_notes' => $request->assessment_notes]
+        );
+
+        return redirect()->route('loans.show', $loan)
+            ->with('success', 'Assessment completed. Loan is now ready for approval.');
     }
 
     /**
@@ -537,19 +665,46 @@ class LoansController extends Controller
         
         // Calculate total interest percentage
         $totalInterestPercentage = 0;
+        $loanFrequency = $loan->repayment_frequency ?? 'monthly';
         if ($loan->loan_amount > 0 && $loan->total_interest) {
             $totalInterestPercentage = ($loan->total_interest / $loan->loan_amount) * 100;
         } elseif ($loan->loan_amount > 0 && $loan->interest_rate && $loan->loan_tenure_months) {
             // Calculate if not set
             $rate = $loan->interest_rate / 100;
             if ($loan->interest_calculation_method === 'flat') {
-                $totalInterest = $loan->loan_amount * $rate * ($loan->loan_tenure_months / 12);
+                // For daily/weekly: rate is total % for the loan period
+                // For monthly/quarterly: rate is per annum
+                if (in_array($loanFrequency, ['daily', 'weekly'])) {
+                    $totalInterest = $loan->loan_amount * $rate;
+                } else {
+                    $totalInterest = $loan->loan_amount * $rate * ($loan->loan_tenure_months / 12);
+                }
             } else {
                 // Reducing balance approximation
-                $monthlyRate = $rate / 12;
-                $totalPayments = $loan->loan_tenure_months;
-                $monthlyPayment = $loan->loan_amount * ($monthlyRate * pow(1 + $monthlyRate, $totalPayments)) / (pow(1 + $monthlyRate, $totalPayments) - 1);
-                $totalInterest = ($monthlyPayment * $totalPayments) - $loan->loan_amount;
+                $frequencyMultiplier = match($loanFrequency) {
+                    'daily' => 30,
+                    'weekly' => 4,
+                    'quarterly' => 0.33,
+                    default => 1,
+                };
+                $totalPayments = ceil($loan->loan_tenure_months * $frequencyMultiplier);
+                
+                // For daily/weekly: rate is total % for the loan period
+                if (in_array($loanFrequency, ['daily', 'weekly'])) {
+                    $periodicRate = $rate / $totalPayments;
+                } else {
+                    $periodicRate = match($loanFrequency) {
+                        'quarterly' => $rate / 4,
+                        default => $rate / 12,
+                    };
+                }
+                
+                if ($periodicRate > 0 && $totalPayments > 0) {
+                    $periodicPayment = $loan->loan_amount * ($periodicRate * pow(1 + $periodicRate, $totalPayments)) / (pow(1 + $periodicRate, $totalPayments) - 1);
+                    $totalInterest = ($periodicPayment * $totalPayments) - $loan->loan_amount;
+                } else {
+                    $totalInterest = 0;
+                }
             }
             $totalInterestPercentage = ($totalInterest / $loan->loan_amount) * 100;
         }
@@ -574,7 +729,41 @@ class LoansController extends Controller
             }
         }
         
-        return view('loans.show', compact('loan', 'totalInterestPercentage', 'previewSchedule'));
+        // Prepare schedule adjustment data
+        $frequency = $loan->repayment_frequency ?? 'monthly';
+        $tenureMonths = $loan->loan_tenure_months;
+        
+        $scheduleAdjustment = [
+            'frequency' => $frequency,
+            'current_value' => match($frequency) {
+                'daily' => round($tenureMonths * 30),
+                'weekly' => round($tenureMonths * 4),
+                'quarterly' => round($tenureMonths / 3),
+                default => $tenureMonths,
+            },
+            'unit_label' => match($frequency) {
+                'daily' => 'Days',
+                'weekly' => 'Weeks',
+                'quarterly' => 'Quarters',
+                default => 'Months',
+            },
+            'min_value' => $loan->loanProduct ? match($frequency) {
+                'daily' => round($loan->loanProduct->min_tenure_months * 30),
+                'weekly' => round($loan->loanProduct->min_tenure_months * 4),
+                'quarterly' => round($loan->loanProduct->min_tenure_months / 3),
+                default => $loan->loanProduct->min_tenure_months,
+            } : 1,
+            'max_value' => $loan->loanProduct ? match($frequency) {
+                'daily' => round($loan->loanProduct->max_tenure_months * 30),
+                'weekly' => round($loan->loanProduct->max_tenure_months * 4),
+                'quarterly' => round($loan->loanProduct->max_tenure_months / 3),
+                default => $loan->loanProduct->max_tenure_months,
+            } : 360,
+            'can_adjust' => !in_array($loan->status, ['disbursed', 'active', 'overdue', 'completed', 'written_off', 'cancelled']),
+            'total_installments' => $previewSchedule ? count($previewSchedule) : $loan->schedules->count(),
+        ];
+
+        return view('loans.show', compact('loan', 'totalInterestPercentage', 'previewSchedule', 'scheduleAdjustment'));
     }
     
     /**
@@ -582,7 +771,15 @@ class LoansController extends Controller
      */
     private function generatePreviewSchedule(Loan $loan): array
     {
-        if (!$loan->approved_amount || !$loan->interest_rate || !$loan->loan_tenure_months) {
+        // Check if custom repayment is available even without interest_rate
+        $meta = is_array($loan->metadata) ? $loan->metadata : (is_string($loan->metadata) ? json_decode($loan->metadata, true) : []);
+        $hasCustomRepayment = !empty($meta['custom_repayment_amount']) && $meta['custom_repayment_amount'] > 0;
+        
+        if (!$loan->approved_amount || !$loan->loan_tenure_months) {
+            return [];
+        }
+        
+        if (!$hasCustomRepayment && !$loan->interest_rate) {
             return [];
         }
 
@@ -604,8 +801,49 @@ class LoansController extends Controller
         $schedule = [];
         $paymentDate = $loan->first_payment_date ? \Carbon\Carbon::parse($loan->first_payment_date) : now()->addDays(30);
         
+        // Check if custom repayment amount is set in metadata
+        $metadata = is_array($loan->metadata) ? $loan->metadata : (is_string($loan->metadata) ? json_decode($loan->metadata, true) : []);
+        $customRepayment = $metadata['custom_repayment_amount'] ?? null;
+        
+        if ($customRepayment && $customRepayment > 0) {
+            // Custom repayment schedule: fixed amount per installment
+            $totalRepayment = $customRepayment * $totalPayments;
+            $totalInterest = max(0, $totalRepayment - $principal);
+            $principalPerInstallment = $principal / $totalPayments;
+            $interestPerInstallment = $totalInterest / $totalPayments;
+            
+            for ($i = 1; $i <= $totalPayments; $i++) {
+                $dueDate = $paymentDate->copy();
+                if ($frequency === 'daily') {
+                    $dueDate->addDays($i - 1);
+                } elseif ($frequency === 'weekly') {
+                    $dueDate->addWeeks($i - 1);
+                } elseif ($frequency === 'monthly') {
+                    $dueDate->addMonths($i - 1);
+                } elseif ($frequency === 'quarterly') {
+                    $dueDate->addMonths(($i - 1) * 3);
+                }
+                
+                $schedule[] = [
+                    'installment_number' => $i,
+                    'due_date' => $dueDate,
+                    'principal_amount' => $principalPerInstallment,
+                    'interest_amount' => $interestPerInstallment,
+                    'total_amount' => $customRepayment,
+                ];
+            }
+            
+            return $schedule;
+        }
+        
         if ($loan->interest_calculation_method === 'flat') {
-            $totalInterest = $principal * $rate * ($months / 12);
+            // For daily/weekly: rate is total % for the loan period
+            // For monthly/quarterly: rate is per annum
+            if (in_array($frequency, ['daily', 'weekly'])) {
+                $totalInterest = $principal * $rate;
+            } else {
+                $totalInterest = $principal * $rate * ($months / 12);
+            }
             $monthlyPayment = ($principal + $totalInterest) / $totalPayments;
             $principalAmount = $principal / $totalPayments;
             $interestAmount = $totalInterest / $totalPayments;
@@ -633,12 +871,14 @@ class LoansController extends Controller
         } else {
             // Reducing balance
             // Calculate periodic rate based on frequency
+            // For daily/weekly: rate is total % for the loan period, so divide by number of installments
+            // For monthly/quarterly: rate is per annum, so divide into periodic rate
             $periodicRate = match($frequency) {
-                'daily' => $rate / 365, // Daily rate
-                'weekly' => $rate / 52, // Weekly rate
-                'monthly' => $rate / 12, // Monthly rate
-                'quarterly' => $rate / 4, // Quarterly rate
-                default => $rate / 12, // Default to monthly
+                'daily' => $rate / $totalPayments,
+                'weekly' => $rate / $totalPayments,
+                'monthly' => $rate / 12,
+                'quarterly' => $rate / 4,
+                default => $rate / 12,
             };
             
             $periodicPayment = $principal * ($periodicRate * pow(1 + $periodicRate, $totalPayments)) / (pow(1 + $periodicRate, $totalPayments) - 1);
@@ -682,6 +922,95 @@ class LoansController extends Controller
         return $schedule;
     }
     
+    /**
+     * Adjust loan schedule tenure/days and first payment date
+     */
+    public function adjustSchedule(Request $request, Loan $loan)
+    {
+        // Only allow adjustment for loans not yet disbursed
+        if (in_array($loan->status, ['disbursed', 'active', 'overdue', 'completed', 'written_off', 'cancelled'])) {
+            return redirect()->back()->with('error', 'Cannot adjust schedule for a loan that has already been disbursed or is active.');
+        }
+
+        $frequency = $loan->repayment_frequency ?? 'monthly';
+
+        $rules = [
+            'first_payment_date' => 'nullable|date|after_or_equal:today',
+        ];
+
+        // Validate tenure value based on frequency
+        if ($frequency === 'daily') {
+            $rules['tenure_value'] = 'required|integer|min:1|max:3650';
+        } elseif ($frequency === 'weekly') {
+            $rules['tenure_value'] = 'required|integer|min:1|max:520';
+        } elseif ($frequency === 'quarterly') {
+            $rules['tenure_value'] = 'required|integer|min:1|max:120';
+        } else {
+            $rules['tenure_value'] = 'required|integer|min:1|max:360';
+        }
+
+        $request->validate($rules);
+
+        $tenureValue = (int) $request->tenure_value;
+
+        // Convert tenure value to months for storage
+        $tenureInMonths = match($frequency) {
+            'daily' => $tenureValue / 30,
+            'weekly' => $tenureValue / 4,
+            'quarterly' => $tenureValue * 3,
+            default => $tenureValue, // monthly
+        };
+
+        // Round to 2 decimal places
+        $tenureInMonths = round($tenureInMonths, 2);
+
+        // Enforce product min/max tenure if product exists
+        if ($loan->loanProduct) {
+            $minMonths = $loan->loanProduct->min_tenure_months;
+            $maxMonths = $loan->loanProduct->max_tenure_months;
+            
+            if ($tenureInMonths < $minMonths || $tenureInMonths > $maxMonths) {
+                $unitLabel = match($frequency) {
+                    'daily' => 'days',
+                    'weekly' => 'weeks',
+                    'quarterly' => 'quarters',
+                    default => 'months',
+                };
+                $minDisplay = match($frequency) {
+                    'daily' => round($minMonths * 30),
+                    'weekly' => round($minMonths * 4),
+                    'quarterly' => round($minMonths / 3),
+                    default => $minMonths,
+                };
+                $maxDisplay = match($frequency) {
+                    'daily' => round($maxMonths * 30),
+                    'weekly' => round($maxMonths * 4),
+                    'quarterly' => round($maxMonths / 3),
+                    default => $maxMonths,
+                };
+                
+                return redirect()->back()->with('error', "Tenure must be between {$minDisplay} and {$maxDisplay} {$unitLabel} for this product.");
+            }
+        }
+
+        // Update loan tenure
+        $updateData = ['loan_tenure_months' => $tenureInMonths];
+
+        if ($request->first_payment_date) {
+            $updateData['first_payment_date'] = $request->first_payment_date;
+        }
+
+        $loan->update($updateData);
+
+        // If the loan has existing schedules (approved loan), regenerate them
+        if ($loan->schedules()->count() > 0 && $loan->approved_amount) {
+            $loan->calculateLoanSchedule();
+        }
+
+        return redirect()->route('loans.show', $loan)
+            ->with('success', 'Loan schedule adjusted successfully.');
+    }
+
     /**
      * Submit loan for review
      */
@@ -1005,7 +1334,46 @@ class LoansController extends Controller
             // Record in General Ledger
             $this->recordLoanRepaymentInLedger($loan, $paymentAmount, $principalAmount, $interestAmount);
 
-            return redirect()->back()->with('success', 'Payment processed successfully. Amount: TZS ' . number_format($paymentAmount, 2));
+            // Build receipt data for session flash
+            $loan->load('loanProduct', 'client');
+            $organization = Organization::find($loan->organization_id);
+            $processedBy = auth()->user();
+
+            $receiptData = [
+                'receipt_number' => $transaction->transaction_number,
+                'date' => now()->format('M d, Y'),
+                'time' => now()->format('h:i A'),
+                'organization' => [
+                    'name' => $organization->name ?? 'Organization',
+                    'address' => $organization->address ?? '',
+                    'city' => $organization->city ?? '',
+                    'phone' => $organization->phone ?? '',
+                    'email' => $organization->email ?? '',
+                ],
+                'client' => [
+                    'name' => $loan->client ? ($loan->client->first_name . ' ' . $loan->client->last_name) : 'N/A',
+                    'client_number' => $loan->client->client_number ?? 'N/A',
+                    'phone' => $loan->client->phone_number ?? 'N/A',
+                ],
+                'loan' => [
+                    'loan_number' => $loan->loan_number,
+                    'product_name' => $loan->loanProduct->name ?? 'N/A',
+                    'outstanding_before' => ($loan->outstanding_balance ?? 0) + $principalAmount,
+                    'outstanding_after' => $loan->outstanding_balance ?? 0,
+                ],
+                'payment' => [
+                    'type' => 'Loan Repayment',
+                    'amount' => $paymentAmount,
+                    'method' => ucfirst(str_replace('_', ' ', $request->payment_method)),
+                    'reference' => $request->payment_reference ?? 'N/A',
+                    'notes' => $request->payment_notes ?? '',
+                ],
+                'processed_by' => $processedBy ? ($processedBy->first_name . ' ' . $processedBy->last_name) : 'System',
+            ];
+
+            return redirect()->back()
+                ->with('success', 'Payment processed successfully. Amount: TZS ' . number_format($paymentAmount, 2))
+                ->with('receipt', $receiptData);
 
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'An error occurred while processing payment: ' . $e->getMessage());
@@ -1130,8 +1498,78 @@ class LoansController extends Controller
      */
     public function closeLoan(Request $request, Loan $loan)
     {
-        // Implementation will be added later
-        return redirect()->back()->with('success', 'Loan closed successfully.');
+        $request->validate([
+            'closure_reason' => 'required|string|max:1000',
+            'return_amount' => 'nullable|numeric|min:0',
+            'forgiven_amount' => 'nullable|numeric|min:0',
+        ]);
+
+        // Check permission
+        if (!in_array(auth()->user()->role, ['admin', 'manager', 'super_admin'])) {
+            return redirect()->back()->with('error', 'You do not have permission to close loans.');
+        }
+
+        // Only active, overdue, or disbursed loans can be closed
+        if (!in_array($loan->status, ['active', 'overdue', 'disbursed'])) {
+            return redirect()->back()->with('error', 'Only active, overdue, or disbursed loans can be closed.');
+        }
+
+        $returnAmount = (float) ($request->return_amount ?? 0);
+        $forgivenAmount = (float) ($request->forgiven_amount ?? 0);
+        $outstandingBalance = (float) ($loan->outstanding_balance ?? 0);
+
+        // Store closure details in metadata
+        $metadata = is_array($loan->metadata) ? $loan->metadata : [];
+        $metadata['closure'] = [
+            'outstanding_at_closure' => $outstandingBalance,
+            'return_amount' => $returnAmount,
+            'forgiven_amount' => $forgivenAmount,
+            'closed_by' => auth()->id(),
+            'closed_by_name' => auth()->user()->name,
+            'closed_at' => now()->toDateTimeString(),
+            'reason' => $request->closure_reason,
+        ];
+
+        $loan->update([
+            'status' => 'completed',
+            'closure_date' => now()->toDateString(),
+            'closure_reason' => $request->closure_reason,
+            'closed_by' => auth()->id(),
+            'outstanding_balance' => max(0, $outstandingBalance - $returnAmount - $forgivenAmount),
+            'write_off_amount' => $forgivenAmount > 0 ? $forgivenAmount : $loan->write_off_amount,
+            'metadata' => $metadata,
+        ]);
+
+        // Mark remaining schedules as closed/waived
+        $loan->schedules()
+            ->where('status', '!=', 'paid')
+            ->update(['status' => 'waived']);
+
+        // Log the closure
+        $comments = is_array($loan->comments) ? $loan->comments : [];
+        $comments[] = [
+            'user_id' => auth()->id(),
+            'user_name' => auth()->user()->name,
+            'user_role' => auth()->user()->role,
+            'comment_type' => 'closure',
+            'comment' => "Loan closed. Return: TZS " . number_format($returnAmount, 2) 
+                        . " | Forgiven: TZS " . number_format($forgivenAmount, 2) 
+                        . " | Reason: " . $request->closure_reason,
+            'created_at' => now()->toDateTimeString(),
+        ];
+        $loan->update(['comments' => $comments]);
+
+        SystemLog::log(
+            'Loan closed',
+            'Loan ' . $loan->loan_number . ' has been closed. Return: TZS ' . number_format($returnAmount, 2) . ', Forgiven: TZS ' . number_format($forgivenAmount, 2),
+            'info',
+            $loan,
+            auth()->id(),
+            ['return_amount' => $returnAmount, 'forgiven_amount' => $forgivenAmount, 'closure_reason' => $request->closure_reason]
+        );
+
+        return redirect()->route('loans.show', $loan)
+            ->with('success', 'Loan has been closed successfully.');
     }
 
     /**

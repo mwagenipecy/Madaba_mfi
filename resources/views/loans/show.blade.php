@@ -27,35 +27,47 @@
                             Back to Loans
                         </a>
                         
+                        {{-- STEP 1: Pending → Start Review --}}
                         @if($loan->status === 'pending')
-                            @if(auth()->user()->id === $loan->loan_officer_id || auth()->user()->id === $loan->client->user_id ?? null)
-                                @if($loan->documents && count($loan->documents) > 0)
-                                    <form method="POST" action="{{ route('loans.submit-for-review', $loan) }}" class="inline">
-                                        @csrf
-                                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-                                            Submit for Review
-                                        </button>
-                                    </form>
-                                @else
-                                    <span class="bg-gray-400 text-white px-4 py-2 rounded-lg font-medium cursor-not-allowed" title="Please upload at least one document">
-                                        Submit for Review
-                                    </span>
-                                @endif
-                            @endif
-                            @if(in_array(auth()->user()->role, ['admin', 'manager', 'super_admin']))
-                                <button onclick="openApprovalModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-                                    Approve Loan
+                            <form method="POST" action="{{ route('loans.under-review', $loan) }}" class="inline">
+                                @csrf
+                                <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path>
+                                    </svg>
+                                    <span>Start Review</span>
                                 </button>
+                            </form>
+                            @if(in_array(auth()->user()->role, ['admin', 'manager', 'super_admin']))
                                 <button onclick="openRejectionModal()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
                                     Reject Loan
                                 </button>
                             @endif
                         @endif
                         
+                        {{-- STEP 2: Under Review → Upload docs, assess, then Complete Assessment --}}
                         @if($loan->status === 'under_review')
+                            <button onclick="openAssessmentModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                </svg>
+                                <span>Assessment Completed</span>
+                            </button>
                             @if(in_array(auth()->user()->role, ['admin', 'manager', 'super_admin']))
-                                <button onclick="openApprovalModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-                                    Approve Loan
+                                <button onclick="openRejectionModal()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                                    Reject Loan
+                                </button>
+                            @endif
+                        @endif
+                        
+                        {{-- STEP 3: Assessed → Approve (generates schedule & activates) --}}
+                        @if($loan->status === 'assessed')
+                            @if(in_array(auth()->user()->role, ['admin', 'manager', 'super_admin']))
+                                <button onclick="openApprovalModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                    <span>Approve Loan</span>
                                 </button>
                                 <button onclick="openRejectionModal()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
                                     Reject Loan
@@ -63,18 +75,55 @@
                             @endif
                         @endif
                         
+                        {{-- Active/Overdue → Repayment + Close Loan --}}
+                        @if(in_array($loan->status, ['active', 'overdue']))
+                            <a href="{{ route('loans.repayments') }}" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                                </svg>
+                                <span>Process Repayment</span>
+                            </a>
+                            @if(in_array(auth()->user()->role, ['admin', 'manager', 'super_admin']))
+                                <button onclick="openCloseLoanModal()" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                    </svg>
+                                    <span>Close Loan</span>
+                                </button>
+                            @endif
+                        @endif
+                        
+                        {{-- Approved (legacy) → Disbursement --}}
                         @if($loan->status === 'approved')
                             <a href="{{ route('loans.disbursements') }}" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
                                 Process Disbursement
                             </a>
                         @endif
-                        
-                        @if(in_array($loan->status, ['active', 'overdue']))
-                            <a href="{{ route('loans.repayments') }}" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-                                Process Repayment
-                            </a>
-                        @endif
                     </div>
+                    
+                    {{-- Workflow Status Banner --}}
+                    @if($loan->status === 'pending')
+                        <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <p class="text-sm text-yellow-800"><strong>Pending:</strong> Click "Start Review" to begin the loan assessment process.</p>
+                        </div>
+                    @elseif($loan->status === 'under_review')
+                        <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                            </svg>
+                            <p class="text-sm text-blue-800"><strong>Under Review:</strong> Upload documents, verify information, and perform assessment. Click "Assessment Completed" when done.</p>
+                        </div>
+                    @elseif($loan->status === 'assessed')
+                        <div class="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg flex items-center space-x-3">
+                            <svg class="w-5 h-5 text-indigo-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <p class="text-sm text-indigo-800"><strong>Assessment Complete:</strong> Loan is ready for approval. An authorized user can now approve and activate this loan.</p>
+                        </div>
+                    @endif
                 </div>
             </div>
 
@@ -97,7 +146,11 @@
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700">Total Interest Rate</label>
                                     <p class="mt-1 text-sm text-gray-900">{{ number_format($totalInterestPercentage, 2) }}% of loan amount</p>
-                                    <p class="mt-1 text-xs text-gray-500">({{ $loan->interest_rate }}% per annum)</p>
+                                    @if(in_array($loan->repayment_frequency, ['daily', 'weekly']))
+                                        <p class="mt-1 text-xs text-gray-500">({{ $loan->interest_rate }}% for loan period)</p>
+                                    @else
+                                        <p class="mt-1 text-xs text-gray-500">({{ $loan->interest_rate }}% per annum)</p>
+                                    @endif
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700">Interest Calculation</label>
@@ -127,12 +180,110 @@
                                     <p class="mt-1 text-sm text-gray-900">{{ $loan->formatted_total_amount }}</p>
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700">Monthly Payment</label>
+                                    <label class="block text-sm font-medium text-gray-700">
+                                        @if(($loan->repayment_frequency ?? 'monthly') === 'daily')
+                                            Daily Payment
+                                        @elseif(($loan->repayment_frequency ?? 'monthly') === 'weekly')
+                                            Weekly Payment
+                                        @elseif(($loan->repayment_frequency ?? 'monthly') === 'quarterly')
+                                            Quarterly Payment
+                                        @else
+                                            Monthly Payment
+                                        @endif
+                                    </label>
                                     <p class="mt-1 text-sm text-gray-900">{{ $loan->formatted_monthly_payment }}</p>
                                 </div>
                             </div>
                         </div>
                     </div>
+
+                    <!-- Adjust Schedule Section -->
+                    @if($scheduleAdjustment['can_adjust'])
+                    <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg border-l-4 border-blue-500">
+                        <div class="p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <div>
+                                    <h2 class="text-lg font-semibold text-gray-900">Adjust Schedule</h2>
+                                    <p class="text-sm text-gray-500 mt-1">
+                                        Current: <span class="font-medium text-gray-700">{{ $scheduleAdjustment['current_value'] }} {{ $scheduleAdjustment['unit_label'] }}</span>
+                                        &middot; <span class="font-medium text-gray-700">{{ $scheduleAdjustment['total_installments'] }} installments</span>
+                                        &middot; Frequency: <span class="font-medium text-gray-700">{{ ucfirst($scheduleAdjustment['frequency']) }}</span>
+                                    </p>
+                                </div>
+                                <span class="px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                                    {{ ucfirst($scheduleAdjustment['frequency']) }}
+                                </span>
+                            </div>
+                            
+                            <form action="{{ route('loans.adjust-schedule', $loan) }}" method="POST">
+                                @csrf
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label for="tenure_value" class="block text-sm font-medium text-gray-700 mb-1">
+                                            Number of {{ $scheduleAdjustment['unit_label'] }}
+                                        </label>
+                                        <input type="number" 
+                                               name="tenure_value" 
+                                               id="tenure_value" 
+                                               value="{{ old('tenure_value', $scheduleAdjustment['current_value']) }}" 
+                                               min="{{ $scheduleAdjustment['min_value'] }}" 
+                                               max="{{ $scheduleAdjustment['max_value'] }}" 
+                                               step="1"
+                                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                                               required>
+                                        <p class="mt-1 text-xs text-gray-500">
+                                            Range: {{ $scheduleAdjustment['min_value'] }} - {{ $scheduleAdjustment['max_value'] }} {{ strtolower($scheduleAdjustment['unit_label']) }}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <label for="first_payment_date" class="block text-sm font-medium text-gray-700 mb-1">
+                                            First Payment Date
+                                        </label>
+                                        <input type="date" 
+                                               name="first_payment_date" 
+                                               id="first_payment_date" 
+                                               value="{{ old('first_payment_date', $loan->first_payment_date ? \Carbon\Carbon::parse($loan->first_payment_date)->format('Y-m-d') : '') }}"
+                                               min="{{ now()->format('Y-m-d') }}"
+                                               class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                        <p class="mt-1 text-xs text-gray-500">
+                                            Leave blank to auto-calculate (30 days from now)
+                                        </p>
+                                    </div>
+                                    <div class="flex items-end">
+                                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center space-x-2">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                            </svg>
+                                            <span>Recalculate Schedule</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                @if($scheduleAdjustment['frequency'] === 'daily')
+                                <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <div class="flex items-start space-x-2">
+                                        <svg class="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                        </svg>
+                                        <div class="text-sm text-blue-700">
+                                            <p class="font-medium">Daily Repayment Schedule</p>
+                                            <p class="mt-1">
+                                                This loan uses daily repayments. Adjusting the number of days will recalculate the schedule with 
+                                                <span id="preview_installments" class="font-semibold">{{ $scheduleAdjustment['current_value'] }}</span> daily installments.
+                                                @if($loan->loan_amount > 0)
+                                                    Each installment will be approximately 
+                                                    <span id="preview_amount" class="font-semibold">TZS {{ number_format(($loan->loan_amount) / $scheduleAdjustment['current_value'], 2) }}</span>
+                                                    (principal only).
+                                                @endif
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                @endif
+                            </form>
+                        </div>
+                    </div>
+                    @endif
 
                     <!-- Client Information -->
                     <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
@@ -434,98 +585,203 @@
                     <!-- Approval Workflow Section -->
                     <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                         <div class="p-6">
-                            <h2 class="text-lg font-semibold text-gray-900 mb-4">Approval Workflow</h2>
+                            <h2 class="text-lg font-semibold text-gray-900 mb-4">Loan Workflow</h2>
                             
-                            <div class="space-y-4">
-                                <!-- Application Submitted -->
-                                <div class="flex items-center space-x-4">
-                                    <div class="flex-shrink-0">
-                                        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                            @php
+                                $statusOrder = ['pending', 'under_review', 'assessed', 'active'];
+                                $currentIndex = array_search($loan->status, $statusOrder);
+                                if ($currentIndex === false) $currentIndex = -1;
+                                $isRejected = $loan->status === 'rejected';
+                                $isCompleted = $loan->status === 'completed';
+                            @endphp
+                            
+                            <div class="space-y-0">
+                                {{-- Step 1: Application Submitted --}}
+                                <div class="flex items-start space-x-4 relative">
+                                    <div class="flex-shrink-0 flex flex-col items-center">
+                                        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center z-10">
                                             <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                                             </svg>
                                         </div>
+                                        <div class="w-0.5 h-6 {{ $currentIndex >= 1 || $isRejected || $isCompleted ? 'bg-green-300' : 'bg-gray-200' }}"></div>
                                     </div>
-                                    <div class="flex-1">
+                                    <div class="flex-1 pb-4">
                                         <p class="text-sm font-medium text-gray-900">Application Submitted</p>
-                                        <p class="text-sm text-gray-500">by {{ $loan->client->display_name }} on {{ $loan->application_date->format('M d, Y g:i A') }}</p>
+                                        <p class="text-xs text-gray-500">{{ $loan->application_date->format('M d, Y') }} &middot; {{ $loan->client->display_name ?? 'Client' }}</p>
                                     </div>
                                 </div>
 
-                                <!-- Under Review -->
-                                @if($loan->status === 'under_review' || $loan->status === 'approved' || $loan->status === 'rejected')
-                                <div class="flex items-center space-x-4">
-                                    <div class="flex-shrink-0">
-                                        <div class="w-8 h-8 {{ $loan->status === 'approved' ? 'bg-green-100' : ($loan->status === 'rejected' ? 'bg-red-100' : 'bg-yellow-100') }} rounded-full flex items-center justify-center">
-                                            <svg class="w-4 h-4 {{ $loan->status === 'approved' ? 'text-green-600' : ($loan->status === 'rejected' ? 'text-red-600' : 'text-yellow-600') }}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                            </svg>
-                                        </div>
+                                {{-- Step 2: Under Review --}}
+                                <div class="flex items-start space-x-4 relative">
+                                    <div class="flex-shrink-0 flex flex-col items-center">
+                                        @if($currentIndex >= 1 || $isRejected || $isCompleted)
+                                            <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center z-10">
+                                                <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                                </svg>
+                                            </div>
+                                        @elseif($loan->status === 'under_review')
+                                            <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center z-10 animate-pulse">
+                                                <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                                                </svg>
+                                            </div>
+                                        @else
+                                            <div class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center z-10">
+                                                <span class="text-xs font-medium text-gray-400">2</span>
+                                            </div>
+                                        @endif
+                                        <div class="w-0.5 h-6 {{ $currentIndex >= 2 || $isRejected || $isCompleted ? 'bg-green-300' : 'bg-gray-200' }}"></div>
                                     </div>
-                                    <div class="flex-1">
-                                        <p class="text-sm font-medium text-gray-900">Under Review</p>
-                                        <p class="text-sm text-gray-500">by {{ $loan->loanOfficer->name ?? 'Loan Officer' }}</p>
+                                    <div class="flex-1 pb-4">
+                                        <p class="text-sm font-medium {{ $currentIndex >= 1 || $loan->status === 'under_review' ? 'text-gray-900' : 'text-gray-400' }}">Review & Assessment</p>
+                                        @if($loan->status === 'under_review')
+                                            <p class="text-xs text-blue-600">In progress — upload documents & verify information</p>
+                                        @elseif($currentIndex >= 1 || $isCompleted)
+                                            <p class="text-xs text-gray-500">Review completed</p>
+                                        @else
+                                            <p class="text-xs text-gray-400">Waiting to start</p>
+                                        @endif
                                     </div>
                                 </div>
-                                @endif
 
-                                <!-- Approved/Rejected -->
-                                @if($loan->approval_status === 'approved' && $loan->approvedBy)
-                                <div class="flex items-center space-x-4">
+                                {{-- Step 3: Assessment Completed --}}
+                                <div class="flex items-start space-x-4 relative">
+                                    <div class="flex-shrink-0 flex flex-col items-center">
+                                        @if($currentIndex >= 2 || $isCompleted)
+                                            <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center z-10">
+                                                <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                                </svg>
+                                            </div>
+                                        @elseif($loan->status === 'assessed')
+                                            <div class="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center z-10 animate-pulse">
+                                                <svg class="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                                                </svg>
+                                            </div>
+                                        @else
+                                            <div class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center z-10">
+                                                <span class="text-xs font-medium text-gray-400">3</span>
+                                            </div>
+                                        @endif
+                                        <div class="w-0.5 h-6 {{ $currentIndex >= 3 || $isCompleted ? 'bg-green-300' : 'bg-gray-200' }}"></div>
+                                    </div>
+                                    <div class="flex-1 pb-4">
+                                        <p class="text-sm font-medium {{ $currentIndex >= 2 || $loan->status === 'assessed' ? 'text-gray-900' : 'text-gray-400' }}">Assessment Completed</p>
+                                        @if($loan->status === 'assessed')
+                                            @php
+                                                $assessmentMeta = is_array($loan->metadata) ? ($loan->metadata['assessment'] ?? null) : null;
+                                            @endphp
+                                            <p class="text-xs text-indigo-600">Ready for approval
+                                                @if($assessmentMeta)
+                                                    &middot; by {{ $assessmentMeta['completed_by_name'] ?? 'Officer' }}
+                                                @endif
+                                            </p>
+                                        @elseif($currentIndex >= 2 || $isCompleted)
+                                            @php
+                                                $assessmentMeta = is_array($loan->metadata) ? ($loan->metadata['assessment'] ?? null) : null;
+                                            @endphp
+                                            <p class="text-xs text-gray-500">Completed
+                                                @if($assessmentMeta)
+                                                    by {{ $assessmentMeta['completed_by_name'] ?? 'Officer' }}
+                                                @endif
+                                            </p>
+                                        @else
+                                            <p class="text-xs text-gray-400">Pending assessment</p>
+                                        @endif
+                                    </div>
+                                </div>
+
+                                {{-- Step 4: Approved & Active --}}
+                                <div class="flex items-start space-x-4 relative">
+                                    <div class="flex-shrink-0 flex flex-col items-center">
+                                        @if($currentIndex >= 3 || $isCompleted)
+                                            <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center z-10">
+                                                <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                                </svg>
+                                            </div>
+                                        @elseif($isRejected)
+                                            <div class="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center z-10">
+                                                <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                                                </svg>
+                                            </div>
+                                        @else
+                                            <div class="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center z-10">
+                                                <span class="text-xs font-medium text-gray-400">4</span>
+                                            </div>
+                                        @endif
+                                        @if($isCompleted)
+                                            <div class="w-0.5 h-6 bg-green-300"></div>
+                                        @endif
+                                    </div>
+                                    <div class="flex-1 pb-4">
+                                        @if($isRejected)
+                                            <p class="text-sm font-medium text-red-700">Rejected</p>
+                                            <p class="text-xs text-red-500">by {{ $loan->rejectedBy->name ?? 'Manager' }}</p>
+                                        @elseif($currentIndex >= 3 || $isCompleted)
+                                            <p class="text-sm font-medium text-gray-900">Approved & Active</p>
+                                            <p class="text-xs text-gray-500">
+                                                by {{ $loan->approvedBy->name ?? 'Manager' }}
+                                                @if($loan->approval_date) on {{ $loan->approval_date->format('M d, Y') }} @endif
+                                                &middot; Schedule saved
+                                            </p>
+                                        @else
+                                            <p class="text-sm font-medium text-gray-400">Approval & Activation</p>
+                                            <p class="text-xs text-gray-400">Pending</p>
+                                        @endif
+                                    </div>
+                                </div>
+
+                                {{-- Step 5: Completed/Closed (only if completed) --}}
+                                @if($isCompleted)
+                                <div class="flex items-start space-x-4">
                                     <div class="flex-shrink-0">
-                                        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                                        <div class="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center z-10">
                                             <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
                                             </svg>
                                         </div>
                                     </div>
                                     <div class="flex-1">
-                                        <p class="text-sm font-medium text-gray-900">Approved</p>
-                                        <p class="text-sm text-gray-500">by {{ $loan->approvedBy->name ?? 'Manager' }} on {{ $loan->approval_date->format('M d, Y g:i A') }}</p>
+                                        <p class="text-sm font-medium text-gray-900">Loan Closed</p>
+                                        <p class="text-xs text-gray-500">
+                                            @if($loan->closure_date)
+                                                on {{ $loan->closure_date->format('M d, Y') }}
+                                            @endif
+                                            @if($loan->closure_reason)
+                                                &middot; {{ Str::limit($loan->closure_reason, 60) }}
+                                            @endif
+                                        </p>
+                                        @php
+                                            $closureMeta = is_array($loan->metadata) ? ($loan->metadata['closure'] ?? null) : null;
+                                        @endphp
+                                        @if($closureMeta)
+                                            <div class="mt-2 p-2 bg-gray-50 rounded text-xs text-gray-600">
+                                                @if(($closureMeta['return_amount'] ?? 0) > 0)
+                                                    <span class="text-green-700">Returned: TZS {{ number_format($closureMeta['return_amount'], 2) }}</span>
+                                                @endif
+                                                @if(($closureMeta['forgiven_amount'] ?? 0) > 0)
+                                                    <span class="ml-2 text-yellow-700">Forgiven: TZS {{ number_format($closureMeta['forgiven_amount'], 2) }}</span>
+                                                @endif
+                                            </div>
+                                        @endif
                                     </div>
-                                </div>
-                                @elseif($loan->approval_status === 'rejected' && $loan->rejectedBy)
-                                <div class="flex items-center space-x-4">
-                                    <div class="flex-shrink-0">
-                                        <div class="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
-                                            <svg class="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                                            </svg>
-                                        </div>
-                                    </div>
-                                    <div class="flex-1">
-                                        <p class="text-sm font-medium text-gray-900">Rejected</p>
-                                        <p class="text-sm text-gray-500">by {{ $loan->rejectedBy->name ?? 'Manager' }} on {{ $loan->rejection_date ?? 'Unknown' }}</p>
-                                    </div>
-                                </div>
-                                @endif
-
-                                <!-- Disbursed -->
-                                @if($loan->status === 'disbursed' && $loan->disbursement_date)
-                                <div class="flex items-center space-x-4">
-                                    <div class="flex-shrink-0">
-                                        <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                                            <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
-                                            </svg>
-                                        </div>
-                                    </div>
-                                    <div class="flex-1">
-                                        <p class="text-sm font-medium text-gray-900">Disbursed</p>
-                                        <p class="text-sm text-gray-500">on {{ $loan->disbursement_date->format('M d, Y g:i A') }}</p>
-                                    </div>
-                                </div>
-                                @endif
-
-                                <!-- Return to Loan Officer -->
-                                @if(($loan->status === 'pending' || $loan->status === 'under_review') && in_array(auth()->user()->role, ['admin', 'manager', 'super_admin']))
-                                <div class="mt-4 pt-4 border-t border-gray-200">
-                                    <button onclick="openReturnModal()" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-                                        Return to Loan Officer
-                                    </button>
                                 </div>
                                 @endif
                             </div>
+
+                            {{-- Return to Officer button --}}
+                            @if(in_array($loan->status, ['pending', 'under_review', 'assessed']) && in_array(auth()->user()->role, ['admin', 'manager', 'super_admin']))
+                            <div class="mt-4 pt-4 border-t border-gray-200">
+                                <button onclick="openReturnModal()" class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg font-medium transition-colors text-sm">
+                                    Return to Loan Officer
+                                </button>
+                            </div>
+                            @endif
                         </div>
                     </div>
                 </div>
@@ -734,6 +990,12 @@
                     </button>
                 </div>
                 
+                <div class="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p class="text-sm text-green-800">
+                        Approving this loan will <strong>generate the payment schedule</strong> and <strong>set the loan to active</strong>.
+                    </p>
+                </div>
+                
                 <form action="{{ route('loans.approve', $loan) }}" method="POST">
                     @csrf
                     <div class="space-y-4">
@@ -741,6 +1003,15 @@
                             <label for="approved_amount" class="block text-sm font-medium text-gray-700 mb-1">Approved Amount (TZS)</label>
                             <input type="number" name="approved_amount" id="approved_amount" step="0.01" min="0" 
                                    value="{{ $loan->loan_amount }}" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500">
+                        </div>
+                        
+                        <div>
+                            <label for="first_payment_date" class="block text-sm font-medium text-gray-700 mb-1">First Payment Date</label>
+                            <input type="date" name="first_payment_date" id="approve_first_payment_date" 
+                                   value="{{ $loan->first_payment_date ? \Carbon\Carbon::parse($loan->first_payment_date)->format('Y-m-d') : now()->addDay()->format('Y-m-d') }}"
+                                   min="{{ now()->format('Y-m-d') }}"
+                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500">
+                            <p class="mt-1 text-xs text-gray-500">When the first repayment is due</p>
                         </div>
                         
                         <div>
@@ -753,7 +1024,7 @@
                                 Cancel
                             </button>
                             <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-colors">
-                                Approve Loan
+                                Approve & Activate Loan
                             </button>
                         </div>
                     </div>
@@ -824,6 +1095,165 @@
                             </button>
                             <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-yellow-600 hover:bg-yellow-700 rounded-lg transition-colors">
                                 Return to Officer
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Assessment Complete Modal -->
+    <div id="assessmentModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+        <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-medium text-gray-900">Complete Assessment</h3>
+                    <button onclick="closeAssessmentModal()" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                
+                <div class="mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                    <p class="text-sm text-indigo-800">
+                        By completing the assessment, you confirm that all documents have been verified and the loan is ready for approval.
+                    </p>
+                </div>
+                
+                <!-- Assessment Checklist -->
+                <div class="mb-4 space-y-2">
+                    <p class="text-sm font-medium text-gray-700">Assessment Checklist:</p>
+                    <label class="flex items-center space-x-2">
+                        <input type="checkbox" id="check_docs" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" onchange="updateAssessmentSubmit()">
+                        <span class="text-sm text-gray-700">All documents verified</span>
+                    </label>
+                    <label class="flex items-center space-x-2">
+                        <input type="checkbox" id="check_client" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" onchange="updateAssessmentSubmit()">
+                        <span class="text-sm text-gray-700">Client information confirmed</span>
+                    </label>
+                    <label class="flex items-center space-x-2">
+                        <input type="checkbox" id="check_capacity" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" onchange="updateAssessmentSubmit()">
+                        <span class="text-sm text-gray-700">Repayment capacity assessed</span>
+                    </label>
+                    <label class="flex items-center space-x-2">
+                        <input type="checkbox" id="check_collateral" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" onchange="updateAssessmentSubmit()">
+                        <span class="text-sm text-gray-700">Collateral/guarantor verified (if applicable)</span>
+                    </label>
+                </div>
+                
+                <form action="{{ route('loans.complete-assessment', $loan) }}" method="POST">
+                    @csrf
+                    <div class="space-y-4">
+                        <div>
+                            <label for="assessment_notes" class="block text-sm font-medium text-gray-700 mb-1">Assessment Notes</label>
+                            <textarea name="assessment_notes" id="assessment_notes" rows="4" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Summary of your assessment findings..."></textarea>
+                        </div>
+                        
+                        <div class="flex justify-end space-x-3 pt-4">
+                            <button type="button" onclick="closeAssessmentModal()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors">
+                                Cancel
+                            </button>
+                            <button type="submit" id="assessment_submit_btn" disabled class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+                                Complete Assessment
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Close Loan Modal -->
+    <div id="closeLoanModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
+        <div class="relative top-20 mx-auto p-5 border w-full max-w-lg shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-medium text-gray-900">Close Loan</h3>
+                    <button onclick="closeCloseLoanModal()" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- Loan Balance Summary -->
+                <div class="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                    <h4 class="text-sm font-semibold text-gray-900 mb-3">Current Balance Summary</h4>
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                            <span class="text-gray-500">Total Loan:</span>
+                            <p class="font-medium text-gray-900">TZS {{ number_format($loan->total_amount ?? $loan->loan_amount, 2) }}</p>
+                        </div>
+                        <div>
+                            <span class="text-gray-500">Amount Paid:</span>
+                            <p class="font-medium text-green-700">TZS {{ number_format($loan->paid_amount ?? 0, 2) }}</p>
+                        </div>
+                        <div>
+                            <span class="text-gray-500">Outstanding:</span>
+                            <p class="font-medium text-red-700">TZS {{ number_format($loan->outstanding_balance ?? 0, 2) }}</p>
+                        </div>
+                        <div>
+                            <span class="text-gray-500">Overdue:</span>
+                            <p class="font-medium text-red-700">TZS {{ number_format($loan->overdue_amount ?? 0, 2) }}</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <form action="{{ route('loans.close', $loan) }}" method="POST">
+                    @csrf
+                    <div class="space-y-4">
+                        <div>
+                            <label for="return_amount" class="block text-sm font-medium text-gray-700 mb-1">Return Amount (TZS)</label>
+                            <input type="number" name="return_amount" id="return_amount" step="0.01" min="0" value="0"
+                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                   placeholder="Amount client is returning" oninput="updateClosureSummary()">
+                            <p class="mt-1 text-xs text-gray-500">Amount the client will pay to close the loan</p>
+                        </div>
+                        
+                        <div>
+                            <label for="forgiven_amount" class="block text-sm font-medium text-gray-700 mb-1">Forgiven Amount (TZS)</label>
+                            <input type="number" name="forgiven_amount" id="forgiven_amount" step="0.01" min="0" value="0"
+                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                   placeholder="Amount to be forgiven/written off" oninput="updateClosureSummary()">
+                            <p class="mt-1 text-xs text-gray-500">Amount the organization agrees to forgive</p>
+                        </div>
+                        
+                        <!-- Closure Summary -->
+                        <div class="p-3 bg-orange-50 border border-orange-200 rounded-lg" id="closure_summary">
+                            <h4 class="text-sm font-semibold text-orange-900 mb-2">Closure Summary</h4>
+                            <div class="space-y-1 text-sm">
+                                <div class="flex justify-between">
+                                    <span class="text-orange-700">Outstanding Balance:</span>
+                                    <span class="font-medium text-orange-900" id="closure_outstanding">TZS {{ number_format($loan->outstanding_balance ?? 0, 2) }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-green-700">Return Amount:</span>
+                                    <span class="font-medium text-green-900" id="closure_return">TZS 0.00</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-yellow-700">Forgiven Amount:</span>
+                                    <span class="font-medium text-yellow-900" id="closure_forgiven">TZS 0.00</span>
+                                </div>
+                                <div class="flex justify-between border-t border-orange-300 pt-1 mt-1">
+                                    <span class="text-orange-700 font-semibold">Remaining After Close:</span>
+                                    <span class="font-bold text-orange-900" id="closure_remaining">TZS {{ number_format($loan->outstanding_balance ?? 0, 2) }}</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label for="closure_reason" class="block text-sm font-medium text-gray-700 mb-1">Closure Reason *</label>
+                            <textarea name="closure_reason" id="closure_reason" required rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-500" placeholder="Reason for closing this loan..."></textarea>
+                        </div>
+                        
+                        <div class="flex justify-end space-x-3 pt-4">
+                            <button type="button" onclick="closeCloseLoanModal()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors">
+                                Cancel
+                            </button>
+                            <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors" onclick="return confirm('Are you sure you want to close this loan? This action cannot be undone.')">
+                                Close Loan
                             </button>
                         </div>
                     </div>
@@ -913,6 +1343,56 @@
             document.getElementById('return_notes').value = '';
         }
 
+        // Assessment Modal Functions
+        function openAssessmentModal() {
+            document.getElementById('assessmentModal').classList.remove('hidden');
+        }
+
+        function closeAssessmentModal() {
+            document.getElementById('assessmentModal').classList.add('hidden');
+            document.getElementById('assessment_notes').value = '';
+            document.querySelectorAll('#assessmentModal input[type="checkbox"]').forEach(cb => cb.checked = false);
+            updateAssessmentSubmit();
+        }
+
+        function updateAssessmentSubmit() {
+            const checks = document.querySelectorAll('#assessmentModal input[type="checkbox"]');
+            const allChecked = [...checks].every(c => c.checked);
+            document.getElementById('assessment_submit_btn').disabled = !allChecked;
+        }
+
+        // Close Loan Modal Functions
+        function openCloseLoanModal() {
+            document.getElementById('closeLoanModal').classList.remove('hidden');
+        }
+
+        function closeCloseLoanModal() {
+            document.getElementById('closeLoanModal').classList.add('hidden');
+            document.getElementById('return_amount').value = '0';
+            document.getElementById('forgiven_amount').value = '0';
+            document.getElementById('closure_reason').value = '';
+            updateClosureSummary();
+        }
+
+        function updateClosureSummary() {
+            const outstanding = {{ $loan->outstanding_balance ?? 0 }};
+            const returnAmt = parseFloat(document.getElementById('return_amount').value) || 0;
+            const forgivenAmt = parseFloat(document.getElementById('forgiven_amount').value) || 0;
+            const remaining = Math.max(0, outstanding - returnAmt - forgivenAmt);
+            
+            document.getElementById('closure_return').textContent = 'TZS ' + returnAmt.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            document.getElementById('closure_forgiven').textContent = 'TZS ' + forgivenAmt.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            document.getElementById('closure_remaining').textContent = 'TZS ' + remaining.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            
+            // Color the remaining amount
+            const remainingEl = document.getElementById('closure_remaining');
+            if (remaining === 0) {
+                remainingEl.className = 'font-bold text-green-700';
+            } else {
+                remainingEl.className = 'font-bold text-orange-900';
+            }
+        }
+
         // Close modals when clicking outside
         document.getElementById('documentModal').addEventListener('click', function(e) {
             if (e.target === this) {
@@ -943,5 +1423,42 @@
                 closeReturnModal();
             }
         });
+
+        const assessmentModalEl = document.getElementById('assessmentModal');
+        if (assessmentModalEl) {
+            assessmentModalEl.addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeAssessmentModal();
+                }
+            });
+        }
+
+        const closeLoanModalEl = document.getElementById('closeLoanModal');
+        if (closeLoanModalEl) {
+            closeLoanModalEl.addEventListener('click', function(e) {
+                if (e.target === this) {
+                    closeCloseLoanModal();
+                }
+            });
+        }
+
+        // Schedule Adjustment - Live preview update
+        const tenureInput = document.getElementById('tenure_value');
+        if (tenureInput) {
+            const previewInstallments = document.getElementById('preview_installments');
+            const previewAmount = document.getElementById('preview_amount');
+            const loanAmount = {{ $loan->loan_amount ?? 0 }};
+            
+            tenureInput.addEventListener('input', function() {
+                const days = parseInt(this.value) || 0;
+                if (previewInstallments) {
+                    previewInstallments.textContent = days;
+                }
+                if (previewAmount && days > 0) {
+                    const amount = loanAmount / days;
+                    previewAmount.textContent = 'TZS ' + amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                }
+            });
+        }
     </script>
 </x-app-shell>

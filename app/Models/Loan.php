@@ -297,6 +297,7 @@ class Loan extends Model
         return match($this->status) {
             'pending' => 'bg-yellow-100 text-yellow-800',
             'under_review' => 'bg-blue-100 text-blue-800',
+            'assessed' => 'bg-indigo-100 text-indigo-800',
             'approved' => 'bg-green-100 text-green-800',
             'rejected' => 'bg-red-100 text-red-800',
             'disbursed' => 'bg-purple-100 text-purple-800',
@@ -397,7 +398,16 @@ class Loan extends Model
 
     public function calculateLoanSchedule(): void
     {
-        if (!$this->approved_amount || !$this->interest_rate || !$this->loan_tenure_months) {
+        // Check if custom repayment is available even without interest_rate
+        $metadata = is_array($this->metadata) ? $this->metadata : (is_string($this->metadata) ? json_decode($this->metadata, true) : []);
+        $customRepayment = $metadata['custom_repayment_amount'] ?? null;
+        $hasCustomRepayment = $customRepayment && $customRepayment > 0;
+        
+        if (!$this->approved_amount || !$this->loan_tenure_months) {
+            return;
+        }
+        
+        if (!$hasCustomRepayment && !$this->interest_rate) {
             return;
         }
 
@@ -417,7 +427,9 @@ class Loan extends Model
 
         $totalPayments = ceil($months * $frequencyMultiplier);
         
-        if ($this->interest_calculation_method === 'flat') {
+        if ($hasCustomRepayment) {
+            $this->calculateCustomRepaymentSchedule($principal, $totalPayments, (float) $customRepayment);
+        } elseif ($this->interest_calculation_method === 'flat') {
             $this->calculateFlatRateSchedule($principal, $rate, $totalPayments);
         } else {
             $this->calculateReducingBalanceSchedule($principal, $rate, $totalPayments);
@@ -427,9 +439,61 @@ class Loan extends Model
         $this->save();
     }
 
+    /**
+     * Calculate schedule using a fixed custom repayment amount per installment.
+     * Interest is derived as the difference between total repayment and principal.
+     */
+    private function calculateCustomRepaymentSchedule(float $principal, int $totalPayments, float $customRepayment): void
+    {
+        $frequency = $this->repayment_frequency ?? 'monthly';
+        $totalRepayment = $customRepayment * $totalPayments;
+        $totalInterest = max(0, $totalRepayment - $principal);
+        $otherFees = $this->other_fees ?? 0;
+        
+        $this->total_interest = $totalInterest;
+        $this->total_amount = $totalRepayment;
+        $this->monthly_payment = $customRepayment;
+        
+        $this->schedules()->delete();
+        
+        $paymentDate = $this->first_payment_date ?? now()->addDays(30);
+        $principalPerInstallment = $principal / $totalPayments;
+        $interestPerInstallment = $totalInterest / $totalPayments;
+        
+        for ($i = 1; $i <= $totalPayments; $i++) {
+            $dueDate = $paymentDate->copy();
+            if ($frequency === 'daily') {
+                $dueDate->addDays($i - 1);
+            } elseif ($frequency === 'weekly') {
+                $dueDate->addWeeks($i - 1);
+            } elseif ($frequency === 'quarterly') {
+                $dueDate->addMonths(($i - 1) * 3);
+            } else {
+                $dueDate->addMonths($i - 1);
+            }
+
+            $this->schedules()->create([
+                'installment_number' => $i,
+                'due_date' => $dueDate,
+                'principal_amount' => $principalPerInstallment,
+                'interest_amount' => $interestPerInstallment,
+                'total_amount' => $customRepayment,
+                'outstanding_amount' => $customRepayment,
+            ]);
+        }
+    }
+
     private function calculateFlatRateSchedule(float $principal, float $rate, int $totalPayments): void
     {
-        $totalInterest = $principal * $rate * ($this->loan_tenure_months / 12);
+        $frequency = $this->repayment_frequency ?? 'monthly';
+        
+        // For daily/weekly: rate is total % for the loan period (e.g. 20% for 30 days = 20% of principal)
+        // For monthly/quarterly: rate is per annum
+        if (in_array($frequency, ['daily', 'weekly'])) {
+            $totalInterest = $principal * $rate;
+        } else {
+            $totalInterest = $principal * $rate * ($this->loan_tenure_months / 12);
+        }
         $this->total_interest = $totalInterest;
         $this->total_amount = $principal + $totalInterest;
         $this->monthly_payment = $this->total_amount / $totalPayments;
@@ -437,14 +501,26 @@ class Loan extends Model
         $this->schedules()->delete();
 
         $paymentDate = $this->first_payment_date ?? now()->addDays(30);
+        $frequency = $this->repayment_frequency ?? 'monthly';
         
         for ($i = 1; $i <= $totalPayments; $i++) {
             $principalAmount = $principal / $totalPayments;
             $interestAmount = $totalInterest / $totalPayments;
             
+            $dueDate = $paymentDate->copy();
+            if ($frequency === 'daily') {
+                $dueDate->addDays($i - 1);
+            } elseif ($frequency === 'weekly') {
+                $dueDate->addWeeks($i - 1);
+            } elseif ($frequency === 'quarterly') {
+                $dueDate->addMonths(($i - 1) * 3);
+            } else {
+                $dueDate->addMonths($i - 1);
+            }
+
             $this->schedules()->create([
                 'installment_number' => $i,
-                'due_date' => $paymentDate->copy()->addMonths($i - 1),
+                'due_date' => $dueDate,
                 'principal_amount' => $principalAmount,
                 'interest_amount' => $interestAmount,
                 'total_amount' => $principalAmount + $interestAmount,
@@ -455,8 +531,19 @@ class Loan extends Model
 
     private function calculateReducingBalanceSchedule(float $principal, float $rate, int $totalPayments): void
     {
-        $monthlyRate = $rate / 12;
-        $this->monthly_payment = $principal * ($monthlyRate * pow(1 + $monthlyRate, $totalPayments)) / (pow(1 + $monthlyRate, $totalPayments) - 1);
+        $frequency = $this->repayment_frequency ?? 'monthly';
+
+        // Calculate periodic rate based on frequency
+        // For daily/weekly: rate is total % for the loan period, so divide by number of installments
+        // For monthly/quarterly: rate is per annum, so divide into periodic rate
+        $periodicRate = match($frequency) {
+            'daily' => $rate / $totalPayments,
+            'weekly' => $rate / $totalPayments,
+            'quarterly' => $rate / 4,
+            default => $rate / 12, // monthly
+        };
+
+        $this->monthly_payment = $principal * ($periodicRate * pow(1 + $periodicRate, $totalPayments)) / (pow(1 + $periodicRate, $totalPayments) - 1);
         $this->total_amount = $this->monthly_payment * $totalPayments;
         $this->total_interest = $this->total_amount - $principal;
 
@@ -466,7 +553,7 @@ class Loan extends Model
         $remainingBalance = $principal;
         
         for ($i = 1; $i <= $totalPayments; $i++) {
-            $interestAmount = $remainingBalance * $monthlyRate;
+            $interestAmount = $remainingBalance * $periodicRate;
             $principalAmount = $this->monthly_payment - $interestAmount;
             
             // For the last payment, adjust for any rounding differences
@@ -474,9 +561,20 @@ class Loan extends Model
                 $principalAmount = $remainingBalance;
             }
             
+            $dueDate = $paymentDate->copy();
+            if ($frequency === 'daily') {
+                $dueDate->addDays($i - 1);
+            } elseif ($frequency === 'weekly') {
+                $dueDate->addWeeks($i - 1);
+            } elseif ($frequency === 'quarterly') {
+                $dueDate->addMonths(($i - 1) * 3);
+            } else {
+                $dueDate->addMonths($i - 1);
+            }
+
             $this->schedules()->create([
                 'installment_number' => $i,
-                'due_date' => $paymentDate->copy()->addMonths($i - 1),
+                'due_date' => $dueDate,
                 'principal_amount' => $principalAmount,
                 'interest_amount' => $interestAmount,
                 'total_amount' => $principalAmount + $interestAmount,

@@ -174,12 +174,14 @@ Route::middleware([
         Route::post('/{loan}/return-to-officer', [App\Http\Controllers\LoansController::class, 'returnToOfficer'])->name('return-to-officer');
         Route::post('/{loan}/submit-for-review', [App\Http\Controllers\LoansController::class, 'submitForReview'])->name('submit-for-review');
         Route::post('/{loan}/under-review', [App\Http\Controllers\LoansController::class, 'putUnderReview'])->name('under-review');
+        Route::post('/{loan}/complete-assessment', [App\Http\Controllers\LoansController::class, 'completeAssessment'])->name('complete-assessment');
         Route::post('/{loan}/disburse', [App\Http\Controllers\LoansController::class, 'disburse'])->name('disburse');
         Route::post('/{loan}/repayment', [App\Http\Controllers\LoansController::class, 'processRepayment'])->name('repayment');
         Route::post('/{loan}/close', [App\Http\Controllers\LoansController::class, 'closeLoan'])->name('close');
         Route::post('/{loan}/write-off', [App\Http\Controllers\LoansController::class, 'writeOffLoan'])->name('write-off');
         Route::post('/{loan}/restructure', [App\Http\Controllers\LoansController::class, 'restructureLoan'])->name('restructure');
         Route::post('/{loan}/top-up', [App\Http\Controllers\LoansController::class, 'topUpLoan'])->name('top-up');
+        Route::post('/{loan}/adjust-schedule', [App\Http\Controllers\LoansController::class, 'adjustSchedule'])->name('adjust-schedule');
     });
 
     // Loan Charges Management

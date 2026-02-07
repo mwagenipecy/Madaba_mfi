@@ -230,11 +230,66 @@ class RepaymentController extends Controller
 
             DB::commit();
 
+            // Gather receipt data
+            $client = Client::find($request->client_id);
+            $loan = $request->loan_id ? Loan::with('loanProduct')->find($request->loan_id) : null;
+            $charge = ($request->payment_type === 'charge_payment' && $request->charge_id) ? LoanTransaction::find($request->charge_id) : null;
+            $organization = Organization::find($organizationId);
+            $processedBy = auth()->user();
+            $collectionAccount = Account::find($request->collection_account_id);
+
+            // Get the transaction number from the most recent transaction for this loan
+            $transactionNumber = LoanTransaction::where('loan_id', $request->loan_id)
+                ->where('status', 'completed')
+                ->latest()
+                ->value('transaction_number') ?? ('RCP-' . date('YmdHis'));
+
+            $receiptData = [
+                'receipt_number' => $transactionNumber,
+                'date' => now()->format('M d, Y'),
+                'time' => now()->format('h:i A'),
+                'organization' => [
+                    'name' => $organization->name ?? 'Organization',
+                    'address' => $organization->address ?? '',
+                    'city' => $organization->city ?? '',
+                    'phone' => $organization->phone ?? '',
+                    'email' => $organization->email ?? '',
+                    'logo' => $organization->logo_path ?? null,
+                ],
+                'client' => [
+                    'name' => $client ? ($client->first_name . ' ' . $client->last_name) : 'N/A',
+                    'client_number' => $client->client_number ?? 'N/A',
+                    'phone' => $client->phone_number ?? 'N/A',
+                ],
+                'loan' => $loan ? [
+                    'loan_number' => $loan->loan_number,
+                    'product_name' => $loan->loanProduct->name ?? 'N/A',
+                    'outstanding_before' => ($loan->outstanding_balance ?? 0) + ($paymentAmount - $remainingAmount),
+                    'outstanding_after' => $loan->outstanding_balance ?? 0,
+                ] : null,
+                'charge' => $charge ? [
+                    'type' => $charge->transaction_type,
+                    'description' => $charge->notes ?? 'N/A',
+                ] : null,
+                'payment' => [
+                    'type' => ucfirst(str_replace('_', ' ', $request->payment_type)),
+                    'amount' => $paymentAmount,
+                    'processed_amount' => $paymentAmount - $remainingAmount,
+                    'remaining' => $remainingAmount,
+                    'method' => ucfirst(str_replace('_', ' ', $request->payment_method)),
+                    'reference' => $request->payment_reference ?? 'N/A',
+                    'account' => $collectionAccount->name ?? 'N/A',
+                    'notes' => $request->payment_notes ?? '',
+                ],
+                'processed_by' => $processedBy ? ($processedBy->first_name . ' ' . $processedBy->last_name) : 'System',
+            ];
+
             return response()->json([
                 'success' => true,
                 'message' => 'Payment processed successfully. Amount: TZS ' . number_format($paymentAmount, 2),
                 'processed_amount' => $paymentAmount - $remainingAmount,
-                'remaining_amount' => $remainingAmount
+                'remaining_amount' => $remainingAmount,
+                'receipt' => $receiptData,
             ]);
 
         } catch (\Exception $e) {
