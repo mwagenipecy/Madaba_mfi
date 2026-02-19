@@ -6,6 +6,7 @@ use App\Models\Client;
 use App\Models\Loan;
 use App\Models\LoanTransaction;
 use App\Models\LoanSchedule;
+use App\Models\RepaymentRecord;
 use App\Models\GeneralLedger;
 use App\Models\Account;
 use App\Models\Organization;
@@ -347,6 +348,26 @@ class RepaymentController extends Controller
             'status' => 'completed',
         ]);
 
+        // Record in dedicated repayment_records table (who did the transaction)
+        RepaymentRecord::create([
+            'organization_id' => $organizationId,
+            'branch_id' => $loan->branch_id,
+            'loan_id' => $loan->id,
+            'client_id' => $loan->client_id,
+            'loan_transaction_id' => $transaction->id,
+            'transaction_number' => $transaction->transaction_number,
+            'amount' => $amount,
+            'principal_amount' => $principalAmount,
+            'interest_amount' => $interestAmount,
+            'payment_method' => $request->payment_method,
+            'payment_date' => $transaction->transaction_date,
+            'recorded_by' => auth()->id(),
+            'collection_account_id' => $request->collection_account_id ?? null,
+            'reference_number' => $request->payment_reference,
+            'notes' => $request->payment_notes,
+            'payment_type' => 'loan_repayment',
+        ]);
+
         // Update loan outstanding balance
         $loan->outstanding_balance -= $principalAmount;
         $loan->paid_amount += $amount;
@@ -390,7 +411,7 @@ class RepaymentController extends Controller
         $charge->save();
 
         // Create a separate payment transaction record
-        LoanTransaction::create([
+        $transaction = LoanTransaction::create([
             'loan_id' => $charge->loan_id,
             'transaction_number' => LoanTransaction::generateTransactionNumber(),
             'transaction_type' => 'principal_payment', // Use principal_payment as the payment transaction type
@@ -404,6 +425,26 @@ class RepaymentController extends Controller
             'organization_id' => $organizationId,
             'branch_id' => $charge->loan->branch_id,
             'status' => 'completed',
+        ]);
+
+        // Record in dedicated repayment_records table (who did the transaction)
+        RepaymentRecord::create([
+            'organization_id' => $organizationId,
+            'branch_id' => $charge->loan->branch_id,
+            'loan_id' => $charge->loan_id,
+            'client_id' => $charge->loan->client_id,
+            'loan_transaction_id' => $transaction->id,
+            'transaction_number' => $transaction->transaction_number,
+            'amount' => $amount,
+            'principal_amount' => 0,
+            'interest_amount' => 0,
+            'payment_method' => $request->payment_method,
+            'payment_date' => $transaction->transaction_date,
+            'recorded_by' => auth()->id(),
+            'collection_account_id' => $request->collection_account_id ?? null,
+            'reference_number' => $request->payment_reference,
+            'notes' => $request->payment_notes . ' - Charge payment for: ' . $charge->transaction_type,
+            'payment_type' => 'charge_payment',
         ]);
     }
 

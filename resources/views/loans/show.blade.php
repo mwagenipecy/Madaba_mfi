@@ -38,7 +38,7 @@
                                     <span>Start Review</span>
                                 </button>
                             </form>
-                            @if(in_array(auth()->user()->role, ['admin', 'manager', 'super_admin']))
+                            @if(auth()->user()->role === 'admin')
                                 <button onclick="openRejectionModal()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
                                     Reject Loan
                                 </button>
@@ -53,7 +53,7 @@
                                 </svg>
                                 <span>Assessment Completed</span>
                             </button>
-                            @if(in_array(auth()->user()->role, ['admin', 'manager', 'super_admin']))
+                            @if(auth()->user()->role === 'admin')
                                 <button onclick="openRejectionModal()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
                                     Reject Loan
                                 </button>
@@ -62,7 +62,7 @@
                         
                         {{-- STEP 3: Assessed → Approve (generates schedule & activates) --}}
                         @if($loan->status === 'assessed')
-                            @if(in_array(auth()->user()->role, ['admin', 'manager', 'super_admin']))
+                            @if(auth()->user()->role === 'admin')
                                 <button onclick="openApprovalModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center space-x-2">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
@@ -1252,7 +1252,7 @@
                             <button type="button" onclick="closeCloseLoanModal()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors">
                                 Cancel
                             </button>
-                            <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors" onclick="return confirm('Are you sure you want to close this loan? This action cannot be undone.')">
+                            <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors">
                                 Close Loan
                             </button>
                         </div>

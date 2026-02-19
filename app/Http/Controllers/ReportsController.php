@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\Loan;
 use App\Models\LoanSchedule;
 use App\Models\LoanTransaction;
+use App\Models\RepaymentRecord;
 use App\Models\Client;
 use App\Models\ExpenseRequest;
 use App\Models\GeneralLedger;
@@ -539,19 +540,19 @@ class ReportsController extends Controller
     }
 
     /**
-     * Get account type distribution
+     * Get account type distribution (by account balance per type).
+     * Uses accounts.balance; real_accounts are linked via mapping table so we no longer join them here.
      */
     private function getAccountTypeDistribution($organizationId, $branchId)
     {
-        $query = Account::join('real_accounts', 'accounts.id', '=', 'real_accounts.account_id')
-            ->where('accounts.organization_id', $organizationId);
+        $query = Account::where('organization_id', $organizationId);
 
         if ($branchId) {
-            $query->where('accounts.branch_id', $branchId);
+            $query->where('branch_id', $branchId);
         }
 
-        return $query->selectRaw('accounts.account_type_id, SUM(real_accounts.last_balance) as total_balance')
-            ->groupBy('accounts.account_type_id')
+        return $query->selectRaw('account_type_id, SUM(COALESCE(balance, 0)) as total_balance')
+            ->groupBy('account_type_id')
             ->with('accountType')
             ->get();
     }
@@ -1552,6 +1553,181 @@ class ReportsController extends Controller
         return view('reports.repayments', compact(
             'repayments', 'totalRepayments', 'totalPrincipal', 'totalInterest', 
             'thisMonthTotal', 'trends', 'loanOfficers', 'clients'
+        ));
+    }
+
+    /**
+     * Daily loans report - loans approved (given) filterable by date or date range.
+     * When a loan is approved, it is recorded here via approval_date.
+     */
+    public function dailyLoans(Request $request)
+    {
+        $user = Auth::user();
+        $organizationId = $user->organization_id ?? Organization::first()?->id;
+
+        // Single date filter: "date"
+        // Date range: "start_date" and "end_date"
+        $singleDate = $request->filled('date');
+        if ($singleDate) {
+            $startDate = Carbon::parse($request->date)->startOfDay();
+            $endDate = Carbon::parse($request->date)->endOfDay();
+        } else {
+            $startDate = $request->filled('start_date')
+                ? Carbon::parse($request->start_date)->startOfDay()
+                : Carbon::now()->startOfDay();
+            $endDate = $request->filled('end_date')
+                ? Carbon::parse($request->end_date)->endOfDay()
+                : Carbon::now()->endOfDay();
+        }
+
+        if (!$organizationId) {
+            return view('reports.daily-loans', [
+                'loans' => collect(),
+                'startDate' => $startDate,
+                'endDate' => $endDate,
+                'totalApproved' => 0,
+                'loanCount' => 0,
+                'averageAmount' => 0,
+                'singleDate' => $singleDate,
+            ]);
+        }
+
+        $query = Loan::where('organization_id', $organizationId)
+            ->where('approval_status', 'approved')
+            ->whereNotNull('approval_date')
+            ->whereBetween('approval_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
+
+        // Optional: filter by branch only when explicitly requested (e.g. ?branch_id=2)
+        if ($request->filled('branch_id')) {
+            $query->where('branch_id', $request->branch_id);
+        }
+
+        $loans = $query->with(['client', 'loanProduct', 'branch', 'approvedBy'])
+            ->orderBy('approval_date', 'desc')
+            ->orderBy('id', 'desc')
+            ->get();
+
+        $totalApproved = $loans->sum('approved_amount');
+        $loanCount = $loans->count();
+        $averageAmount = $loanCount > 0 ? $totalApproved / $loanCount : 0;
+
+        return view('reports.daily-loans', compact(
+            'loans',
+            'startDate',
+            'endDate',
+            'totalApproved',
+            'loanCount',
+            'averageAmount',
+            'singleDate'
+        ));
+    }
+
+    /**
+     * Daily repayment report - repayments recorded (e.g. on /repayments page).
+     * Filterable by date range; shows cash, mobile wallet (mobile_money), and other methods.
+     * Includes balance and next payment date per loan.
+     */
+    public function dailyRepayments(Request $request)
+    {
+        $user = Auth::user();
+        $organizationId = $user->organization_id ?? \App\Models\Organization::first()?->id;
+        $branchId = $user->branch_id;
+
+        $startDate = $request->filled('start_date')
+            ? Carbon::parse($request->start_date)->startOfDay()
+            : Carbon::now()->startOfMonth();
+        $endDate = $request->filled('end_date')
+            ? Carbon::parse($request->end_date)->endOfDay()
+            : Carbon::now()->endOfDay();
+
+        if (!$organizationId) {
+            return view('reports.daily-repayments', [
+                'repayments' => collect(),
+                'startDate' => $startDate,
+                'endDate' => $endDate,
+                'totalCollected' => 0,
+                'transactionCount' => 0,
+                'averagePayment' => 0,
+                'totalPrincipal' => 0,
+                'totalInterest' => 0,
+                'byPaymentMethod' => ['cash' => 0, 'mobile_money' => 0, 'bank_transfer' => 0, 'check' => 0, 'other' => 0],
+                'countByMethod' => ['cash' => 0, 'mobile_money' => 0, 'bank_transfer' => 0, 'check' => 0, 'other' => 0],
+                'dailyBreakdown' => collect(),
+            ]);
+        }
+
+        $query = RepaymentRecord::where('organization_id', $organizationId)
+            ->whereBetween('payment_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
+
+        // Optional: filter by branch (dropdown in UI could set ?branch_id=). When not set, show all org repayments.
+        if ($request->filled('branch_id')) {
+            $bid = $request->branch_id;
+            $query->where(function ($q) use ($bid) {
+                $q->where('branch_id', $bid)->orWhereNull('branch_id');
+            });
+        }
+
+        $repayments = $query->with([
+            'loan.client',
+            'loan.loanProduct',
+            'loan.branch',
+            'recordedBy',
+            'loan.schedules' => function ($q) {
+                $q->where('status', 'pending')->orderBy('due_date');
+            },
+        ])
+            ->orderBy('payment_date', 'desc')
+            ->orderBy('id', 'desc')
+            ->get();
+
+        // Summary totals
+        $totalCollected = $repayments->sum('amount');
+        $transactionCount = $repayments->count();
+        $averagePayment = $transactionCount > 0 ? $totalCollected / $transactionCount : 0;
+        $totalPrincipal = $repayments->sum('principal_amount');
+        $totalInterest = $repayments->sum('interest_amount');
+
+        // By payment method: cash, mobile wallet (mobile_money), others
+        $byPaymentMethod = [
+            'cash' => $repayments->where('payment_method', 'cash')->sum('amount'),
+            'mobile_money' => $repayments->where('payment_method', 'mobile_money')->sum('amount'),
+            'bank_transfer' => $repayments->where('payment_method', 'bank_transfer')->sum('amount'),
+            'check' => $repayments->whereIn('payment_method', ['check', 'cheque'])->sum('amount'),
+            'other' => $repayments->whereIn('payment_method', ['other', null])->sum('amount'),
+        ];
+        $countByMethod = [
+            'cash' => $repayments->where('payment_method', 'cash')->count(),
+            'mobile_money' => $repayments->where('payment_method', 'mobile_money')->count(),
+            'bank_transfer' => $repayments->where('payment_method', 'bank_transfer')->count(),
+            'check' => $repayments->whereIn('payment_method', ['check', 'cheque'])->count(),
+            'other' => $repayments->whereIn('payment_method', ['other', null])->count(),
+        ];
+
+        // Daily breakdown for summary
+        $dailyBreakdown = $repayments->groupBy(function ($r) {
+            return $r->payment_date ? \Carbon\Carbon::parse($r->payment_date)->format('Y-m-d') : '';
+        })->map(function ($dayRepayments, $date) {
+            return [
+                'date' => $date,
+                'amount' => $dayRepayments->sum('amount'),
+                'count' => $dayRepayments->count(),
+                'cash' => $dayRepayments->where('payment_method', 'cash')->sum('amount'),
+                'mobile_money' => $dayRepayments->where('payment_method', 'mobile_money')->sum('amount'),
+            ];
+        })->sortKeysDesc();
+
+        return view('reports.daily-repayments', compact(
+            'repayments',
+            'startDate',
+            'endDate',
+            'totalCollected',
+            'transactionCount',
+            'averagePayment',
+            'totalPrincipal',
+            'totalInterest',
+            'byPaymentMethod',
+            'countByMethod',
+            'dailyBreakdown'
         ));
     }
 }

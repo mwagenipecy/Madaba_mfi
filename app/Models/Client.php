@@ -59,6 +59,8 @@ class Client extends Model
         'status',
         'notes',
         'metadata',
+        'created_by',
+        'updated_by',
     ];
 
     protected $casts = [
@@ -87,6 +89,16 @@ class Client extends Model
     public function verifiedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'verified_by');
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function updatedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'updated_by');
     }
 
     public function loans(): HasMany

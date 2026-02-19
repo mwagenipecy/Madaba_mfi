@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Loan;
 use App\Models\LoanTransaction;
+use App\Models\RepaymentRecord;
 use App\Models\Client;
 use App\Models\LoanProduct;
 use App\Models\Branch;
@@ -1567,6 +1568,26 @@ class LoansController extends Controller
             auth()->id(),
             ['return_amount' => $returnAmount, 'forgiven_amount' => $forgivenAmount, 'closure_reason' => $request->closure_reason]
         );
+
+        // Record closure in repayment_records so it appears on daily repayments report (who closed it, when)
+        RepaymentRecord::create([
+            'organization_id' => $loan->organization_id,
+            'branch_id' => $loan->branch_id,
+            'loan_id' => $loan->id,
+            'client_id' => $loan->client_id,
+            'loan_transaction_id' => null,
+            'transaction_number' => 'CLOSE-' . now()->format('YmdHis') . '-' . $loan->id,
+            'amount' => $returnAmount,
+            'principal_amount' => $returnAmount,
+            'interest_amount' => 0,
+            'payment_method' => null,
+            'payment_date' => now()->toDateString(),
+            'recorded_by' => auth()->id(),
+            'collection_account_id' => null,
+            'reference_number' => null,
+            'notes' => 'Loan closed. ' . ($request->closure_reason ?? '') . ($forgivenAmount > 0 ? ' Forgiven: TZS ' . number_format($forgivenAmount, 2) : ''),
+            'payment_type' => 'loan_closure',
+        ]);
 
         return redirect()->route('loans.show', $loan)
             ->with('success', 'Loan has been closed successfully.');

@@ -252,6 +252,7 @@ class ClientsController extends Controller
             'annual_turnover' => $request->annual_turnover,
             'notes' => $request->notes,
             'kyc_status' => 'pending',
+            'created_by' => Auth::id(),
         ]);
 
         // Handle KYC document uploads with compression
@@ -331,7 +332,7 @@ class ClientsController extends Controller
      */
     public function show(Client $client)
     {
-        $client->load(['organization', 'branch', 'verifiedBy', 'loans.loanProduct']);
+        $client->load(['organization', 'branch', 'verifiedBy', 'createdBy', 'updatedBy', 'loans.loanProduct']);
         return view('clients.show', compact('client'));
     }
 
@@ -546,6 +547,7 @@ class ClientsController extends Controller
         // Prepare update data - include documents in the update
         $updateData = $request->except(['kyc_documents', 'kyc_document_types', 'kyc_document_descriptions', 'removed_documents']);
         $updateData['kyc_documents'] = $allDocuments;
+        $updateData['updated_by'] = Auth::id();
         
         // Log document state before update
         \Log::info('Updating client documents', [

@@ -107,6 +107,30 @@
                             <span class="font-medium">{{ $client->branch->name }}</span>
                         </div>
                     @endif
+                    @if($client->createdBy)
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Created by:</span>
+                            <span class="font-medium">{{ $client->createdBy->first_name }} {{ $client->createdBy->last_name }}</span>
+                        </div>
+                    @endif
+                    @if($client->created_at)
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Created at:</span>
+                            <span class="font-medium">{{ $client->created_at->format('M d, Y H:i') }}</span>
+                        </div>
+                    @endif
+                    @if($client->updatedBy)
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Updated by:</span>
+                            <span class="font-medium">{{ $client->updatedBy->first_name }} {{ $client->updatedBy->last_name }}</span>
+                        </div>
+                    @endif
+                    @if($client->updated_at && $client->updated_at->ne($client->created_at))
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Updated at:</span>
+                            <span class="font-medium">{{ $client->updated_at->format('M d, Y H:i') }}</span>
+                        </div>
+                    @endif
                 </div>
             </div>
 

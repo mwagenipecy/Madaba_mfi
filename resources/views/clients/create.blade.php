@@ -517,6 +517,17 @@
                 </div>
             </div>
 
+            <!-- Record created by (default: current user) -->
+            <div class="bg-white rounded-lg shadow-sm p-6">
+                <div class="flex items-center justify-between border-t border-gray-200 pt-4 mt-4">
+                    <p class="text-sm text-gray-600">
+                        <span class="font-medium text-gray-700">Record created by:</span>
+                        {{ auth()->user()->first_name }} {{ auth()->user()->last_name }}
+                        <span class="text-gray-500">({{ auth()->user()->email }})</span>
+                    </p>
+                </div>
+            </div>
+
             <!-- Form Actions -->
             <div class="bg-white rounded-lg shadow-sm p-6">
                 <div class="flex items-center justify-end space-x-4">

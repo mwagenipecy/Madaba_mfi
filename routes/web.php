@@ -221,6 +221,13 @@ Route::middleware([
         Route::get('/client/{client}', [App\Http\Controllers\RepaymentController::class, 'getClientDetails'])->name('client-details');
         Route::post('/process', [App\Http\Controllers\RepaymentController::class, 'processRepayment'])->name('process');
     });
+
+    // Daily Till - opening/closing cash and mobile wallet
+    Route::prefix('daily-till')->name('daily-till.')->group(function () {
+        Route::get('/', [App\Http\Controllers\DailyTillController::class, 'index'])->name('index');
+        Route::post('/open', [App\Http\Controllers\DailyTillController::class, 'openDay'])->name('open');
+        Route::post('/close', [App\Http\Controllers\DailyTillController::class, 'closeDay'])->name('close');
+    });
     
     // Organizations Management
     Route::prefix('organizations')->name('organizations.')->group(function () {
@@ -291,6 +298,8 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::get('/expenses', [App\Http\Controllers\ReportsController::class, 'expenses'])->name('expenses');
         Route::get('/customers', [App\Http\Controllers\ReportsController::class, 'customers'])->name('customers');
         Route::get('/repayments', [App\Http\Controllers\ReportsController::class, 'repayments'])->name('repayments');
+        Route::get('/daily-loans', [App\Http\Controllers\ReportsController::class, 'dailyLoans'])->name('daily-loans');
+        Route::get('/daily-repayments', [App\Http\Controllers\ReportsController::class, 'dailyRepayments'])->name('daily-repayments');
         Route::get('/crb', [App\Http\Controllers\CrbReportController::class, 'index'])->name('crb');
         Route::get('/crb/export', [App\Http\Controllers\CrbReportController::class, 'export'])->name('crb.export');
     });

@@ -645,6 +645,26 @@
                 @endauth
             </div>
 
+            <!-- DAILY TILL -->
+            @auth
+            <div class="mb-6">
+                <div class="px-3 py-2 mb-3">
+                    <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Daily Till</h3>
+                </div>
+                @php $dailyTillActive = request()->routeIs('daily-till.*'); @endphp
+                <a href="{{ route('daily-till.index') }}"
+                   class="sidebar-item group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 {{ $dailyTillActive ? 'active bg-green-50 text-green-700 shadow-sm' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                    </svg>
+                    <span class="truncate">Cash & Mobile Wallet</span>
+                    @if($dailyTillActive)
+                        <div class="ml-auto w-1.5 h-1.5 bg-green-600 rounded-full animate-pulse"></div>
+                    @endif
+                </a>
+            </div>
+            @endauth
+
             <!-- ANALYTICS & REPORTING -->
             <div class="mb-6">
                 <div class="px-3 py-2 mb-3">
@@ -689,6 +709,16 @@
                                 'label' => 'Portfolio Analytics',
                                 'route' => 'reports.par',
                                 'icon' => 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'
+                            ],
+                            [
+                                'label' => 'Daily Loan Report',
+                                'route' => 'reports.daily-loans',
+                                'icon' => 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z'
+                            ],
+                            [
+                                'label' => 'Daily Repayment Report',
+                                'route' => 'reports.daily-repayments',
+                                'icon' => 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z'
                             ],
                             [
                                 'label' => 'Disbursement Analytics',
