@@ -10,7 +10,10 @@
     <!-- Scrollable Navigation -->
     <div class="flex-1 overflow-hidden">
         <nav class="h-full overflow-y-auto px-3 py-4 space-y-1 sidebar-scroll">
-            
+            @php
+                $isLoanOfficer = auth()->user() && strtolower(auth()->user()->role ?? '') === 'loan_officer';
+            @endphp
+
             <!-- CORE NAVIGATION -->
             <div class="mb-6">
                 <div class="px-3 py-2 mb-3">
@@ -46,7 +49,8 @@
                     </a>
                 @endforeach
             </div>
-            
+
+            @unless($isLoanOfficer)
             <!-- BUSINESS OPERATIONS -->
             <div class="mb-6">
                 <div class="px-3 py-2 mb-3">
@@ -82,8 +86,10 @@
                     </a>
                 @endforeach
             </div>
+            @endunless
             
             <!-- SYSTEM ADMINISTRATION -->
+            @unless($isLoanOfficer)
             <div class="mb-6">
                 <div class="px-3 py-2 mb-3">
                     <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">System Administration</h3>
@@ -240,8 +246,9 @@
                     </div>
                 </div>
             </div>
+            @endunless
             
-            <!-- FINANCIAL MANAGEMENT -->
+            <!-- FINANCIAL MANAGEMENT (Accounting - visible to Loan Officer) -->
             <div class="mb-6">
                 <div class="px-3 py-2 mb-3">
                     <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Financial Management</h3>
@@ -320,7 +327,7 @@
                 </div>
             </div>
             
-            <!-- LOAN MANAGEMENT -->
+            <!-- LOAN MANAGEMENT (visible to Loan Officer) -->
             <div class="mb-6">
                 <div class="px-3 py-2 mb-3">
                     <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Loan Management</h3>
@@ -515,12 +522,13 @@
                 @endauth
             </div>
 
-            <!-- WORKFLOW & APPROVALS -->
+            <!-- WORKFLOW & APPROVALS (Loan Officer sees Expenses only; Approvals hidden) -->
             <div class="mb-6">
                 <div class="px-3 py-2 mb-3">
                     <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Workflow & Approvals</h3>
                 </div>
                 
+                @unless($isLoanOfficer)
                 <!-- Approvals Menu -->
                 @auth
                 <div x-data="{ open: false }" class="space-y-1">
@@ -589,8 +597,9 @@
                     </div>
                 </div>
                 @endauth
+                @endunless
                 
-                <!-- Expenses Menu -->
+                <!-- Expenses Menu (visible to Loan Officer) -->
                 @auth
                 <div x-data="{ open: false }" class="space-y-1">
                     <button @click="open = !open" class="sidebar-item group flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 text-gray-600 hover:bg-gray-50 hover:text-gray-900">
@@ -645,7 +654,7 @@
                 @endauth
             </div>
 
-            <!-- DAILY TILL -->
+            <!-- DAILY TILL (Cash & Mobile Wallet - visible to Loan Officer) -->
             @auth
             <div class="mb-6">
                 <div class="px-3 py-2 mb-3">
