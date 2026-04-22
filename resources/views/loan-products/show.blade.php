@@ -111,8 +111,18 @@
                             <h2 class="text-lg font-semibold text-gray-900 mb-4">Fees and Charges</h2>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
+                                    <label class="block text-sm font-medium text-gray-700">Processing Fee Type</label>
+                                    <p class="mt-1 text-sm text-gray-900">{{ ($loanProduct->processing_fee_type ?? 'fixed') === 'percent' ? 'Percentage (%)' : 'Fixed Amount' }}</p>
+                                </div>
+                                <div>
                                     <label class="block text-sm font-medium text-gray-700">Processing Fee</label>
-                                    <p class="mt-1 text-sm text-gray-900">TZS {{ number_format($loanProduct->processing_fee, 2) }}</p>
+                                    <p class="mt-1 text-sm text-gray-900">
+                                        @if(($loanProduct->processing_fee_type ?? 'fixed') === 'percent')
+                                            {{ number_format($loanProduct->processing_fee, 2) }}%
+                                        @else
+                                            TZS {{ number_format($loanProduct->processing_fee, 2) }}
+                                        @endif
+                                    </p>
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700">Late Fee</label>
@@ -121,6 +131,31 @@
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700">Grace Period</label>
                                     <p class="mt-1 text-sm text-gray-900">{{ $loanProduct->grace_period_days }} days</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Account Configuration -->
+                    <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                        <div class="p-6">
+                            <h2 class="text-lg font-semibold text-gray-900 mb-4">Account Configuration</h2>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Disbursement Account</label>
+                                    <p class="mt-1 text-sm text-gray-900">{{ $loanProduct->disbursementAccount?->name ?? 'Not configured' }}</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Collection Account</label>
+                                    <p class="mt-1 text-sm text-gray-900">{{ $loanProduct->collectionAccount?->name ?? 'Not configured' }}</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Interest Revenue Account</label>
+                                    <p class="mt-1 text-sm text-gray-900">{{ $loanProduct->interestRevenueAccount?->name ?? 'Not configured' }}</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Principal Account</label>
+                                    <p class="mt-1 text-sm text-gray-900">{{ $loanProduct->principalAccount?->name ?? 'Not configured' }}</p>
                                 </div>
                             </div>
                         </div>

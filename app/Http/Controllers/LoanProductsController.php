@@ -154,7 +154,16 @@ class LoanProductsController extends Controller
             abort(403, 'Unauthorized access to loan product.');
         }
 
-        return view('loan-products.edit', compact('loanProduct'));
+        $organizationId = Auth::user()->organization_id ?? Organization::first()?->id;
+
+        // Get accounts for the organization
+        $accounts = \App\Models\Account::where('organization_id', $organizationId)
+            ->where('status', 'active')
+            ->with(['accountType', 'branch'])
+            ->orderBy('name')
+            ->get();
+
+        return view('loan-products.edit', compact('loanProduct', 'accounts'));
     }
 
     /**
@@ -188,6 +197,10 @@ class LoanProductsController extends Controller
             'status' => 'required|in:active,inactive,suspended',
             'is_featured' => 'boolean',
             'sort_order' => 'nullable|integer|min:0',
+            'disbursement_account_id' => 'required|exists:accounts,id',
+            'collection_account_id' => 'required|exists:accounts,id',
+            'interest_revenue_account_id' => 'required|exists:accounts,id',
+            'principal_account_id' => 'required|exists:accounts,id',
         ]);
 
         $oldData = $loanProduct->toArray();
@@ -215,6 +228,10 @@ class LoanProductsController extends Controller
             'status' => $request->status,
             'is_featured' => $request->boolean('is_featured'),
             'sort_order' => $request->sort_order ?? 0,
+            'disbursement_account_id' => $request->disbursement_account_id,
+            'collection_account_id' => $request->collection_account_id,
+            'interest_revenue_account_id' => $request->interest_revenue_account_id,
+            'principal_account_id' => $request->principal_account_id,
         ]);
 
         // Log the action

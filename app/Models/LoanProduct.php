@@ -120,6 +120,14 @@ class LoanProduct extends Model
     }
 
     /**
+     * Use product code in route model binding.
+     */
+    public function getRouteKeyName(): string
+    {
+        return 'code';
+    }
+
+    /**
      * Get the status badge color
      */
     public function getStatusBadgeColorAttribute(): string

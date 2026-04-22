@@ -291,6 +291,89 @@
                             </div>
                         </div>
 
+                        <!-- Account Configuration -->
+                        <div class="bg-gray-50 rounded-lg p-6">
+                            <h2 class="text-lg font-semibold text-gray-900 mb-4">Account Configuration</h2>
+                            <p class="text-sm text-gray-600 mb-4">Configure the accounts that will be used for loan disbursement, collection, and revenue tracking.</p>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label for="disbursement_account_id" class="block text-sm font-medium text-gray-700 mb-2">Disbursement Account</label>
+                                    <select name="disbursement_account_id" id="disbursement_account_id"
+                                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                            required>
+                                        <option value="">Select disbursement account</option>
+                                        @foreach($accounts as $account)
+                                            @if(\Illuminate\Support\Str::lower($account->accountType->name) === 'liability' || \Illuminate\Support\Str::lower($account->accountType->category ?? '') === 'liability')
+                                                <option value="{{ $account->id }}" {{ old('disbursement_account_id', $loanProduct->disbursement_account_id) == $account->id ? 'selected' : '' }}>
+                                                    {{ $account->name }} ({{ $account->branch ? $account->branch->name : 'Main' }})
+                                                </option>
+                                            @endif
+                                        @endforeach
+                                    </select>
+                                    @error('disbursement_account_id')
+                                        <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                                    @enderror
+                                </div>
+
+                                <div>
+                                    <label for="collection_account_id" class="block text-sm font-medium text-gray-700 mb-2">Collection Account</label>
+                                    <select name="collection_account_id" id="collection_account_id"
+                                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                            required>
+                                        <option value="">Select collection account</option>
+                                        @foreach($accounts as $account)
+                                            @if(\Illuminate\Support\Str::lower($account->accountType->name) === 'assets' || \Illuminate\Support\Str::lower($account->accountType->category ?? '') === 'asset' || \Illuminate\Support\Str::lower($account->accountType->name) === 'asset')
+                                                <option value="{{ $account->id }}" {{ old('collection_account_id', $loanProduct->collection_account_id) == $account->id ? 'selected' : '' }}>
+                                                    {{ $account->name }} ({{ $account->branch ? $account->branch->name : 'Main' }})
+                                                </option>
+                                            @endif
+                                        @endforeach
+                                    </select>
+                                    @error('collection_account_id')
+                                        <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                                    @enderror
+                                </div>
+
+                                <div>
+                                    <label for="interest_revenue_account_id" class="block text-sm font-medium text-gray-700 mb-2">Interest Revenue Account</label>
+                                    <select name="interest_revenue_account_id" id="interest_revenue_account_id"
+                                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                            required>
+                                        <option value="">Select interest revenue account</option>
+                                        @foreach($accounts as $account)
+                                            @if(\Illuminate\Support\Str::lower($account->accountType->name) === 'revenue' || \Illuminate\Support\Str::lower($account->accountType->category ?? '') === 'revenue')
+                                                <option value="{{ $account->id }}" {{ old('interest_revenue_account_id', $loanProduct->interest_revenue_account_id) == $account->id ? 'selected' : '' }}>
+                                                    {{ $account->name }} ({{ $account->branch ? $account->branch->name : 'Main' }})
+                                                </option>
+                                            @endif
+                                        @endforeach
+                                    </select>
+                                    @error('interest_revenue_account_id')
+                                        <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                                    @enderror
+                                </div>
+
+                                <div>
+                                    <label for="principal_account_id" class="block text-sm font-medium text-gray-700 mb-2">Principal Account</label>
+                                    <select name="principal_account_id" id="principal_account_id"
+                                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                            required>
+                                        <option value="">Select principal account</option>
+                                        @foreach($accounts as $account)
+                                            @if(\Illuminate\Support\Str::lower($account->accountType->name) === 'assets' || \Illuminate\Support\Str::lower($account->accountType->category ?? '') === 'asset' || \Illuminate\Support\Str::lower($account->accountType->name) === 'asset')
+                                                <option value="{{ $account->id }}" {{ old('principal_account_id', $loanProduct->principal_account_id) == $account->id ? 'selected' : '' }}>
+                                                    {{ $account->name }} ({{ $account->branch ? $account->branch->name : 'Main' }})
+                                                </option>
+                                            @endif
+                                        @endforeach
+                                    </select>
+                                    @error('principal_account_id')
+                                        <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                                    @enderror
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Submit Buttons -->
                         <div class="flex justify-end space-x-3">
                             <a href="{{ route('loan-products.show', $loanProduct) }}" 
