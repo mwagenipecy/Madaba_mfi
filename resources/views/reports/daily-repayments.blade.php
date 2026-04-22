@@ -188,7 +188,7 @@
                                     </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-right text-gray-900">
                                         @if($loan)
-                                            TZS {{ number_format($loan->outstanding_balance ?? 0, 2) }}
+                                            TZS {{ number_format($loan->calculated_outstanding_amount ?? 0, 2) }}
                                         @else
                                             —
                                         @endif

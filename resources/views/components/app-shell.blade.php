@@ -15,6 +15,10 @@
             position: relative;
             overflow: hidden;
         }
+
+        .submenu-group {
+            border-left: 0;
+        }
         
         .sidebar-item::before {
             content: '';
@@ -30,6 +34,28 @@
         
         .sidebar-item.active::before {
             transform: scaleY(1);
+        }
+
+        .sidebar-item > svg,
+        .sidebar-item > .flex > svg {
+            width: 1.25rem;
+            height: 1.25rem;
+            color: #4b5563;
+            background: #f3f4f6;
+            border-radius: 0.45rem;
+            padding: 0.18rem;
+        }
+
+        .sidebar-item:hover > svg,
+        .sidebar-item:hover > .flex > svg {
+            color: #1f2937;
+            background: #e5e7eb;
+        }
+
+        .sidebar-item.active > svg,
+        .sidebar-item.active > .flex > svg {
+            color: #15803d;
+            background: #dcfce7;
         }
         
         /* Smooth hover effects */

@@ -73,13 +73,15 @@ class RepaymentController extends Controller
                     'phone' => $client->phone_number,
                     'email' => $client->email,
                     'active_loans_count' => $activeLoans->count(),
-                    'total_outstanding' => $activeLoans->sum('outstanding_balance'),
+                    'total_outstanding' => $activeLoans->sum(function ($loan) {
+                        return $loan->calculated_outstanding_amount;
+                    }),
                     'loans' => $activeLoans->map(function($loan) {
                         return [
                             'id' => $loan->id,
                             'loan_number' => $loan->loan_number,
                             'product_name' => $loan->loanProduct->name ?? 'N/A',
-                            'outstanding_balance' => $loan->outstanding_balance,
+                            'outstanding_balance' => $loan->calculated_outstanding_amount,
                             'status' => $loan->status,
                             'next_due_amount' => $loan->schedules->where('status', 'pending')->first()->total_amount ?? 0,
                             'next_due_date' => $loan->schedules->where('status', 'pending')->first()->due_date ?? null,
@@ -139,7 +141,7 @@ class RepaymentController extends Controller
                     'id' => $loan->id,
                     'loan_number' => $loan->loan_number,
                     'product_name' => $loan->loanProduct->name ?? 'N/A',
-                    'outstanding_balance' => $loan->outstanding_balance,
+                    'outstanding_balance' => $loan->calculated_outstanding_amount,
                     'status' => $loan->status,
                     'next_due_amount' => $nextSchedule ? $nextSchedule->total_amount : 0,
                     'next_due_date' => $nextSchedule ? $nextSchedule->due_date : null,
@@ -200,11 +202,11 @@ class RepaymentController extends Controller
             if (in_array($request->payment_type, ['loan_repayment', 'both'])) {
                 $loan = Loan::findOrFail($request->loan_id);
                 
-                if ($loan->outstanding_balance <= 0) {
+                if ($loan->calculated_outstanding_amount <= 0) {
                     throw new \Exception('This loan has no outstanding balance.');
                 }
 
-                $loanPaymentAmount = min($remainingAmount, $loan->outstanding_balance);
+                $loanPaymentAmount = min($remainingAmount, $loan->calculated_outstanding_amount);
                 
                 // Process loan payment
                 $this->processLoanPayment($loan, $loanPaymentAmount, $request, $organizationId);
@@ -265,8 +267,11 @@ class RepaymentController extends Controller
                 'loan' => $loan ? [
                     'loan_number' => $loan->loan_number,
                     'product_name' => $loan->loanProduct->name ?? 'N/A',
-                    'outstanding_before' => ($loan->outstanding_balance ?? 0) + ($paymentAmount - $remainingAmount),
-                    'outstanding_after' => $loan->outstanding_balance ?? 0,
+                    'outstanding_before' => min(
+                        $loan->total_required_repayment,
+                        $loan->calculated_outstanding_amount + ($paymentAmount - $remainingAmount)
+                    ),
+                    'outstanding_after' => $loan->calculated_outstanding_amount ?? 0,
                 ] : null,
                 'charge' => $charge ? [
                     'type' => $charge->transaction_type,
@@ -369,12 +374,12 @@ class RepaymentController extends Controller
         ]);
 
         // Update loan outstanding balance
-        $loan->outstanding_balance -= $principalAmount;
         $loan->paid_amount += $amount;
         $loan->payments_made += 1;
+        $loan->outstanding_balance = $loan->calculated_outstanding_amount;
         
         // Check if loan is fully paid
-        if ($loan->outstanding_balance <= 0) {
+        if ($loan->calculated_outstanding_amount <= 0) {
             $loan->status = 'completed';
             $loan->closure_date = now();
             $loan->closed_by = auth()->id();

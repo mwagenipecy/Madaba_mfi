@@ -794,8 +794,12 @@
                             <h2 class="text-lg font-semibold text-gray-900 mb-4">Loan Summary</h2>
                             <div class="space-y-4">
                                 <div class="flex justify-between">
+                                    <span class="text-sm text-gray-600">Total Required to Pay</span>
+                                    <span class="text-sm font-medium text-gray-900">{{ $loan->formatted_total_required_repayment }}</span>
+                                </div>
+                                <div class="flex justify-between">
                                     <span class="text-sm text-gray-600">Outstanding Balance</span>
-                                    <span class="text-sm font-medium text-gray-900">{{ $loan->formatted_outstanding_balance }}</span>
+                                    <span class="text-sm font-medium text-gray-900">TZS {{ number_format($loan->calculated_outstanding_amount, 2) }}</span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-sm text-gray-600">Paid Amount</span>
@@ -1192,7 +1196,7 @@
                         </div>
                         <div>
                             <span class="text-gray-500">Outstanding:</span>
-                            <p class="font-medium text-red-700">TZS {{ number_format($loan->outstanding_balance ?? 0, 2) }}</p>
+                            <p class="font-medium text-red-700">TZS {{ number_format($loan->calculated_outstanding_amount ?? 0, 2) }}</p>
                         </div>
                         <div>
                             <span class="text-gray-500">Overdue:</span>
@@ -1226,7 +1230,7 @@
                             <div class="space-y-1 text-sm">
                                 <div class="flex justify-between">
                                     <span class="text-orange-700">Outstanding Balance:</span>
-                                    <span class="font-medium text-orange-900" id="closure_outstanding">TZS {{ number_format($loan->outstanding_balance ?? 0, 2) }}</span>
+                                    <span class="font-medium text-orange-900" id="closure_outstanding">TZS {{ number_format($loan->calculated_outstanding_amount ?? 0, 2) }}</span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-green-700">Return Amount:</span>
@@ -1238,7 +1242,7 @@
                                 </div>
                                 <div class="flex justify-between border-t border-orange-300 pt-1 mt-1">
                                     <span class="text-orange-700 font-semibold">Remaining After Close:</span>
-                                    <span class="font-bold text-orange-900" id="closure_remaining">TZS {{ number_format($loan->outstanding_balance ?? 0, 2) }}</span>
+                                    <span class="font-bold text-orange-900" id="closure_remaining">TZS {{ number_format($loan->calculated_outstanding_amount ?? 0, 2) }}</span>
                                 </div>
                             </div>
                         </div>

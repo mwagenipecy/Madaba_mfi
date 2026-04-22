@@ -350,6 +350,29 @@ class Loan extends Model
         return 'TZS ' . number_format($this->paid_amount, 2);
     }
 
+    public function getTotalRequiredRepaymentAttribute(): float
+    {
+        $principal = (float) ($this->approved_amount ?? $this->loan_amount ?? 0);
+
+        if (!is_null($this->total_amount) && (float) $this->total_amount > 0) {
+            return (float) $this->total_amount;
+        }
+
+        $interest = (float) ($this->total_interest ?? 0);
+
+        return $principal + $interest;
+    }
+
+    public function getCalculatedOutstandingAmountAttribute(): float
+    {
+        return max(0, $this->total_required_repayment - (float) ($this->paid_amount ?? 0));
+    }
+
+    public function getFormattedTotalRequiredRepaymentAttribute(): string
+    {
+        return 'TZS ' . number_format($this->total_required_repayment, 2);
+    }
+
     public function getFormattedOverdueAmountAttribute(): string
     {
         return 'TZS ' . number_format($this->overdue_amount, 2);
@@ -394,6 +417,11 @@ class Loan extends Model
         } while (self::where('loan_number', $number)->exists());
 
         return $number;
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'loan_number';
     }
 
     public function calculateLoanSchedule(): void
@@ -655,6 +683,11 @@ class Loan extends Model
 
         // Generate repayment schedule now that loan is disbursed
         $this->calculateLoanSchedule();
+
+        // Outstanding should include principal + interest less paid amount.
+        $this->refresh();
+        $this->outstanding_balance = $this->calculated_outstanding_amount;
+        $this->save();
 
         // Record in General Ledger
         $this->recordGeneralLedgerEntry('disbursement', $this->approved_amount, $disbursementAccountId);
