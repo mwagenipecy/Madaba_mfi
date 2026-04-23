@@ -22,40 +22,41 @@ class DashboardController extends Controller
     {
         $user = Auth::user();
         $organizationId = $user->organization_id;
-        $branchId = $user->branch_id;
+        // Staff are scoped to their branch; org admins / super_admins see the whole organization
+        $filterBranchId = $user->isAdmin() ? null : $user->branch_id;
 
         // Get basic statistics
-        $stats = $this->getBasicStats($organizationId, $branchId);
+        $stats = $this->getBasicStats($organizationId, $filterBranchId);
         
         // Get portfolio at risk data
-        $parData = $this->getPARData($organizationId, $branchId);
+        $parData = $this->getPARData($organizationId, $filterBranchId);
         
         // Get monthly performance data
-        $monthlyData = $this->getMonthlyPerformance($organizationId, $branchId);
+        $monthlyData = $this->getMonthlyPerformance($organizationId, $filterBranchId);
         
         // Get loan status distribution
-        $loanStatusDistribution = $this->getLoanStatusDistribution($organizationId, $branchId);
+        $loanStatusDistribution = $this->getLoanStatusDistribution($organizationId, $filterBranchId);
         
         // Get account balances
-        $accountBalances = $this->getAccountBalances($organizationId, $branchId);
+        $accountBalances = $this->getAccountBalances($organizationId, $filterBranchId);
         
         // Get recent activities
-        $recentActivities = $this->getRecentActivities($organizationId, $branchId);
+        $recentActivities = $this->getRecentActivities($organizationId, $filterBranchId);
         
         // Get critical alerts
-        $criticalAlerts = $this->getCriticalAlerts($organizationId, $branchId);
+        $criticalAlerts = $this->getCriticalAlerts($organizationId, $filterBranchId);
         
         // Get performance metrics
-        $performanceMetrics = $this->getPerformanceMetrics($organizationId, $branchId);
+        $performanceMetrics = $this->getPerformanceMetrics($organizationId, $filterBranchId);
         
         // Get branch performance (if user is admin)
         $branchPerformance = null;
-        if ($user->role === 'admin') {
+        if ($user->isAdmin()) {
             $branchPerformance = $this->getBranchPerformance($organizationId);
         }
 
         // Get upcoming payments (3 days ago to 3 days ahead)
-        $upcomingPayments = $this->getUpcomingPayments($organizationId, $branchId);
+        $upcomingPayments = $this->getUpcomingPayments($organizationId, $filterBranchId);
 
         return view('dashboard', compact(
             'stats',
