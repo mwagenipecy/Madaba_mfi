@@ -82,8 +82,9 @@
                     
                     <!-- Recent Loans Table -->
                     <div class="bg-white border border-gray-200 rounded-lg">
-                        <div class="px-6 py-4 border-b border-gray-200">
+                        <div class="px-6 py-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-2">
                             <h3 class="text-lg font-semibold text-gray-900">Recent Loans</h3>
+                            <a href="{{ route('loans.index') }}" class="text-sm font-medium text-green-600 hover:text-green-800">View all loans</a>
                         </div>
                         <div class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-gray-200">

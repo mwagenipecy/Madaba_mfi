@@ -26,15 +26,17 @@ class LoansController extends Controller
 
         // Get loan statistics
         $totalLoans = Loan::where('organization_id', $organizationId)->count();
-        $activeLoans = Loan::where('organization_id', $organizationId)->where('status', 'active')->count();
+        $activeLoans = Loan::where('organization_id', $organizationId)
+            ->whereIn('status', ['active', 'overdue', 'disbursed'])
+            ->count();
         $pendingApprovals = Loan::where('organization_id', $organizationId)->where('status', 'pending')->count();
         $overdueLoans = Loan::where('organization_id', $organizationId)->where('status', 'overdue')->count();
 
-        // Get recent loans
+        // Get recent loans (wider list; KPI above reflects all on-book statuses)
         $recentLoans = Loan::where('organization_id', $organizationId)
             ->with(['client', 'loanProduct', 'branch'])
             ->latest()
-            ->take(5)
+            ->take(20)
             ->get();
 
         return view('loans.dashboard', compact('totalLoans', 'activeLoans', 'pendingApprovals', 'overdueLoans', 'recentLoans'));

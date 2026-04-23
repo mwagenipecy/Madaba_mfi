@@ -80,7 +80,10 @@ class DashboardController extends Controller
             });
 
         $totalLoans = (clone $baseQuery)->count();
-        $activeLoans = (clone $baseQuery)->where('status', 'active')->count();
+        // On-book: disbursed loans keep status "disbursed" until first repayment cycle moves them; include with active + overdue
+        $activeLoans = (clone $baseQuery)
+            ->whereIn('status', ['active', 'overdue', 'disbursed'])
+            ->count();
         $overdueLoans = (clone $baseQuery)->where('status', 'overdue')->count();
 
         $totalClients = Client::where('organization_id', $organizationId)
@@ -417,7 +420,7 @@ class DashboardController extends Controller
         return $branches->map(function($branch) use ($organizationId) {
             $activeLoans = Loan::where('organization_id', $organizationId)
                 ->where('branch_id', $branch->id)
-                ->whereIn('status', ['active', 'overdue'])
+                ->whereIn('status', ['active', 'overdue', 'disbursed'])
                 ->count();
 
             $totalPortfolio = Loan::where('organization_id', $organizationId)
