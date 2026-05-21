@@ -6,9 +6,14 @@ use Illuminate\Http\Request;
 use App\Models\Account;
 use App\Models\AccountType;
 use App\Models\Branch;
+use App\Models\GeneralLedger;
 use App\Models\RealAccount;
 use App\Models\SystemLog;
 use App\Models\Organization;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class AccountsController extends Controller
 {
@@ -637,12 +642,128 @@ class AccountsController extends Controller
     public function generalLedger(Request $request)
     {
         $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
-        
-        // Get general ledger entries with filters
-        $query = \App\Models\GeneralLedger::where('organization_id', $organizationId)
+        $query = $this->generalLedgerQuery($request, $organizationId);
+
+        $perPage = (int) $request->get('per_page', 25);
+        $perPage = in_array($perPage, [15, 25, 50, 100], true) ? $perPage : 25;
+
+        $entries = (clone $query)->latest('transaction_date')
+            ->latest('id')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        $accounts = Account::where('organization_id', $organizationId)->get();
+        $summary = $this->generalLedgerSummary($query);
+
+        return view('accounts.general-ledger', array_merge(
+            compact('entries', 'accounts'),
+            $summary
+        ));
+    }
+
+    /**
+     * Export general ledger transactions to Excel.
+     */
+    public function exportGeneralLedger(Request $request)
+    {
+        $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
+        $query = $this->generalLedgerQuery($request, $organizationId);
+
+        $entries = (clone $query)->latest('transaction_date')->latest('id')->get();
+        $summary = $this->generalLedgerSummary($query);
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('General Ledger');
+
+        $sheet->setCellValue('A1', 'General Ledger Statement');
+        $sheet->mergeCells('A1:J1');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+
+        $filterParts = [];
+        if ($request->filled('account_id')) {
+            $account = Account::find($request->account_id);
+            $filterParts[] = 'Account: ' . ($account?->name ?? $request->account_id);
+        }
+        if ($request->filled('transaction_type')) {
+            $filterParts[] = 'Type: ' . ucfirst(str_replace('_', ' ', $request->transaction_type));
+        }
+        if ($request->filled('date_from') && $request->filled('date_to')) {
+            $filterParts[] = 'Period: ' . $request->date_from . ' to ' . $request->date_to;
+        }
+        $sheet->setCellValue('A2', $filterParts ? implode(' | ', $filterParts) : 'All transactions');
+        $sheet->mergeCells('A2:J2');
+
+        $headers = [
+            'Date', 'Reference', 'Account Number', 'Account Name', 'Description',
+            'Transaction Type', 'Debit (TZS)', 'Credit (TZS)', 'Balance After (TZS)', 'Recorded By',
+        ];
+
+        $headerRow = 4;
+        foreach ($headers as $col => $header) {
+            $cell = chr(65 + $col) . $headerRow;
+            $sheet->setCellValue($cell, $header);
+        }
+
+        $headerRange = 'A' . $headerRow . ':J' . $headerRow;
+        $sheet->getStyle($headerRange)->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['rgb' => '176836'],
+            ],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+        ]);
+
+        $row = $headerRow + 1;
+        foreach ($entries as $entry) {
+            $isDebit = $entry->transaction_type === 'debit';
+            $sheet->setCellValue('A' . $row, $entry->transaction_date->format('Y-m-d'));
+            $sheet->setCellValue('B' . $row, $entry->transaction_id);
+            $sheet->setCellValue('C' . $row, $entry->account->account_number ?? '');
+            $sheet->setCellValue('D' . $row, $entry->account->name ?? '');
+            $sheet->setCellValue('E' . $row, $entry->description);
+            $sheet->setCellValue('F' . $row, ucfirst($entry->transaction_type));
+            $sheet->setCellValue('G' . $row, $isDebit ? (float) $entry->amount : null);
+            $sheet->setCellValue('H' . $row, $isDebit ? null : (float) $entry->amount);
+            $sheet->setCellValue('I' . $row, (float) $entry->balance_after);
+            $sheet->setCellValue('J' . $row, $entry->creator
+                ? trim($entry->creator->first_name . ' ' . $entry->creator->last_name)
+                : '');
+            $row++;
+        }
+
+        $sheet->setCellValue('E' . $row, 'Totals');
+        $sheet->getStyle('E' . $row)->getFont()->setBold(true);
+        $sheet->setCellValue('G' . $row, (float) $summary['totalDebits']);
+        $sheet->setCellValue('H' . $row, (float) $summary['totalCredits']);
+        $sheet->getStyle('G' . $row . ':H' . $row)->getFont()->setBold(true);
+
+        foreach (range('A', 'J') as $col) {
+            $sheet->getColumnDimension($col)->setAutoSize(true);
+        }
+        $sheet->getStyle('G' . ($headerRow + 1) . ':I' . $row)
+            ->getNumberFormat()
+            ->setFormatCode('#,##0.00');
+
+        $filename = 'General_Ledger_' . now()->format('Y-m-d_His') . '.xlsx';
+        $writer = new Xlsx($spreadsheet);
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $filename, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    /**
+     * Build filtered general ledger query.
+     */
+    private function generalLedgerQuery(Request $request, int $organizationId)
+    {
+        $query = GeneralLedger::where('organization_id', $organizationId)
             ->with(['account', 'creator']);
 
-        // Apply filters
         if ($request->filled('account_id')) {
             $query->where('account_id', $request->account_id);
         }
@@ -653,23 +774,24 @@ class AccountsController extends Controller
             $query->whereBetween('transaction_date', [$request->date_from, $request->date_to]);
         }
 
-        $entries = $query->latest('transaction_date')->latest('id')->paginate(50);
-        
-        // Get accounts for filtering
-        $accounts = Account::where('organization_id', $organizationId)->get();
-        
-        // Get summary statistics
-        $totalDebits = \App\Models\GeneralLedger::where('organization_id', $organizationId)
-            ->where('transaction_type', 'debit')
-            ->sum('amount');
-            
-        $totalCredits = \App\Models\GeneralLedger::where('organization_id', $organizationId)
-            ->where('transaction_type', 'credit')
-            ->sum('amount');
-            
-        $netBalance = $totalCredits - $totalDebits;
+        return $query;
+    }
 
-        return view('accounts.general-ledger', compact('entries', 'accounts', 'totalDebits', 'totalCredits', 'netBalance'));
+    /**
+     * Summary totals for a filtered general ledger query.
+     */
+    private function generalLedgerSummary($query): array
+    {
+        $base = clone $query;
+
+        $totalDebits = (clone $base)->where('transaction_type', 'debit')->sum('amount');
+        $totalCredits = (clone $base)->where('transaction_type', 'credit')->sum('amount');
+
+        return [
+            'totalDebits' => $totalDebits,
+            'totalCredits' => $totalCredits,
+            'netBalance' => $totalCredits - $totalDebits,
+        ];
     }
 
     /**

@@ -93,6 +93,7 @@ Route::middleware([
         Route::get('/branch', [App\Http\Controllers\AccountsController::class, 'branchAccounts'])->name('branch-accounts');
         Route::get('/real', [App\Http\Controllers\AccountsController::class, 'realAccounts'])->name('real-accounts');
         Route::get('/general-ledger', [App\Http\Controllers\AccountsController::class, 'generalLedger'])->name('general-ledger');
+        Route::get('/general-ledger/export', [App\Http\Controllers\AccountsController::class, 'exportGeneralLedger'])->name('general-ledger.export');
         Route::get('/balance-sheet', [App\Http\Controllers\BalanceSheetController::class, 'index'])->name('balance-sheet');
         Route::get('/balance-sheet/export', [App\Http\Controllers\BalanceSheetController::class, 'export'])->name('balance-sheet.export');
         Route::get('/create', [App\Http\Controllers\AccountsController::class, 'create'])->name('create');
@@ -140,13 +141,13 @@ Route::middleware([
         Route::get('/individual', [App\Http\Controllers\ClientsController::class, 'individual'])->name('individual');
         Route::get('/business', [App\Http\Controllers\ClientsController::class, 'business'])->name('business');
         Route::get('/create', [App\Http\Controllers\ClientsController::class, 'create'])->name('create');
+        Route::get('/generate-client-number', [App\Http\Controllers\ClientsController::class, 'generateClientNumber'])->name('generate-client-number');
         Route::post('/', [App\Http\Controllers\ClientsController::class, 'store'])->name('store');
         Route::get('/{client}', [App\Http\Controllers\ClientsController::class, 'show'])->name('show');
         Route::get('/{client}/edit', [App\Http\Controllers\ClientsController::class, 'edit'])->name('edit');
         Route::put('/{client}', [App\Http\Controllers\ClientsController::class, 'update'])->name('update');
-        Route::delete('/{client}', [App\Http\Controllers\ClientsController::class, 'destroy'])->name('destroy');
+        Route::patch('/{client}/disable', [App\Http\Controllers\ClientsController::class, 'disable'])->name('disable');
         Route::patch('/{client}/kyc-status', [App\Http\Controllers\ClientsController::class, 'updateKycStatus'])->name('update-kyc-status');
-        Route::get('/generate-client-number', [App\Http\Controllers\ClientsController::class, 'generateClientNumber'])->name('generate-client-number');
     });
 
     // Loan Management

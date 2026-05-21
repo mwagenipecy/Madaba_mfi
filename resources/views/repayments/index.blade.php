@@ -54,6 +54,27 @@
                             <!-- Client details will be populated here -->
                         </div>
 
+                        <!-- Payment Schedule Preview -->
+                        <div id="schedulePreview" class="hidden mb-6">
+                            <h3 class="text-md font-semibold text-gray-900 mb-3">Payment Schedule</h3>
+                            <p class="text-xs text-gray-500 mb-2">Due installments: interest first, then principal. Future installments: principal first, then interest.</p>
+                            <div class="overflow-x-auto border border-gray-200 rounded-lg">
+                                <table class="min-w-full divide-y divide-gray-200 text-sm">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">#</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Due</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rem. Principal</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rem. Interest</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Outstanding</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="schedulePreviewBody" class="bg-white divide-y divide-gray-200"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
                         <!-- Loans and Charges -->
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                             <!-- Active Loans -->
@@ -237,6 +258,7 @@
     <script>
         let selectedClient = null;
         let searchTimeout = null;
+        let clientLoansData = [];
 
         // Client search functionality
         document.getElementById('clientSearch').addEventListener('input', function() {
@@ -275,7 +297,7 @@
                 results.innerHTML = '<div class="p-4 text-center text-gray-500">No clients found</div>';
             } else {
                 results.innerHTML = clients.map(client => `
-                    <div class="p-4 border-b border-gray-200 hover:bg-gray-50 cursor-pointer" onclick="selectClient(${client.id})">
+                    <div class="p-4 border-b border-gray-200 hover:bg-gray-50 cursor-pointer" onclick="selectClient('${client.uuid}')">
                         <div class="flex justify-between items-start">
                             <div>
                                 <h4 class="font-medium text-gray-900">${client.name}</h4>
@@ -294,11 +316,17 @@
             resultsContainer.classList.remove('hidden');
         }
 
-        function selectClient(clientId) {
-            fetch(`{{ url('/repayments/client') }}/${clientId}`)
-                .then(response => response.json())
+        function selectClient(clientUuid) {
+            fetch(`{{ url('/repayments/client') }}/${clientUuid}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Client not found');
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     selectedClient = data;
+                    clientLoansData = data.loans || [];
                     displayClientDetails(data);
                     hideSearchResults();
                 })
@@ -380,7 +408,43 @@
 
             // Show client details section
             document.getElementById('clientDetailsSection').classList.remove('hidden');
+            document.getElementById('schedulePreview').classList.add('hidden');
         }
+
+        function renderSchedulePreview(loanId) {
+            const preview = document.getElementById('schedulePreview');
+            const tbody = document.getElementById('schedulePreviewBody');
+            const loan = clientLoansData.find(l => l.id == loanId);
+
+            if (!loan || !loan.schedules || loan.schedules.length === 0) {
+                preview.classList.add('hidden');
+                return;
+            }
+
+            const statusColors = {
+                paid: 'bg-green-100 text-green-800',
+                partial: 'bg-orange-100 text-orange-800',
+                overdue: 'bg-red-100 text-red-800',
+                pending: 'bg-yellow-100 text-yellow-800',
+            };
+
+            tbody.innerHTML = loan.schedules.map(s => `
+                <tr>
+                    <td class="px-3 py-2">${s.installment_number}</td>
+                    <td class="px-3 py-2">${s.due_date}${s.is_due ? '' : ' <span class="text-blue-600 text-xs">(early)</span>'}</td>
+                    <td class="px-3 py-2">TZS ${formatNumber(s.remaining_principal)}</td>
+                    <td class="px-3 py-2">TZS ${formatNumber(s.remaining_interest)}</td>
+                    <td class="px-3 py-2 font-medium">TZS ${formatNumber(s.outstanding_amount)}</td>
+                    <td class="px-3 py-2"><span class="px-2 py-0.5 rounded-full text-xs ${statusColors[s.status] || 'bg-gray-100 text-gray-800'}">${s.status}</span></td>
+                </tr>
+            `).join('');
+
+            preview.classList.remove('hidden');
+        }
+
+        document.getElementById('selectedLoanId').addEventListener('change', function() {
+            renderSchedulePreview(this.value);
+        });
 
         // Payment type change handler
         document.getElementById('paymentType').addEventListener('change', function() {
@@ -432,7 +496,14 @@
                 submitButton.textContent = 'Process Payment';
                 
                 if (data.success) {
-                    showAlert(data.message, 'success');
+                    let msg = data.message;
+                    if (data.allocation && data.allocation.length) {
+                        msg += ' Applied to ' + data.allocation.length + ' installment(s).';
+                    }
+                    if (data.unallocated > 0) {
+                        msg += ' Unallocated: TZS ' + formatNumber(data.unallocated);
+                    }
+                    showAlert(msg, 'success');
                     this.reset();
                     
                     // Show receipt if available

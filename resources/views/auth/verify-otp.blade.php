@@ -70,15 +70,16 @@
                 <!-- Submit Button -->
                 <div>
                     <button 
-                        type="submit" 
-                        class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors duration-200"
+                        type="submit"
+                        id="verifyBtn"
+                        class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors duration-200 disabled:opacity-75 disabled:cursor-not-allowed"
                     >
-                        <span class="absolute left-0 inset-y-0 flex items-center pl-3">
-                            <svg class="h-5 w-5 text-green-500 group-hover:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <span id="verifyBtnLabel" class="flex items-center">
+                            <svg class="h-5 w-5 mr-2 text-green-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                             </svg>
+                            Verify & Continue
                         </span>
-                        Verify & Continue
                     </button>
                 </div>
 
@@ -107,16 +108,38 @@
     </div>
 
     <script>
+        let isSubmitting = false;
+
+        function setVerifyLoading() {
+            if (isSubmitting) return;
+            isSubmitting = true;
+
+            const btn = document.getElementById('verifyBtn');
+            const label = document.getElementById('verifyBtnLabel');
+            const otpInput = document.getElementById('otp_code');
+
+            btn.disabled = true;
+            otpInput.readOnly = true;
+            label.innerHTML = `
+                <svg class="animate-spin h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Verifying...
+            `;
+        }
+
         // Auto-focus on OTP input
         document.getElementById('otp_code').focus();
 
         // Auto-format OTP input (numbers only)
         document.getElementById('otp_code').addEventListener('input', function(e) {
             this.value = this.value.replace(/[^0-9]/g, '');
-            if (this.value.length === 6) {
-                // Auto-submit when 6 digits are entered
+            if (this.value.length === 6 && !isSubmitting) {
                 setTimeout(() => {
-                    this.form.submit();
+                    if (isSubmitting) return;
+                    setVerifyLoading();
+                    this.form.requestSubmit();
                 }, 500);
             }
         });
@@ -222,7 +245,10 @@
             if (otpCode.length !== 6) {
                 e.preventDefault();
                 showMessage('Please enter a valid 6-digit OTP code.', 'error');
+                return;
             }
+
+            setVerifyLoading();
         });
     </script>
 </x-guest-layout>

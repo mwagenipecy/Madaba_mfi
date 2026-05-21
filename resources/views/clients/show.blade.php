@@ -488,12 +488,12 @@
                     </form>
                 @endif
 
-                @if($client->status === 'active')
-                    <form action="{{ route('clients.destroy', $client) }}" method="POST" class="inline" onsubmit="return confirm('Are you sure you want to delete this client?')">
+                @if($client->status !== 'disabled')
+                    <form action="{{ route('clients.disable', $client) }}" method="POST" class="inline" onsubmit="return confirm('Are you sure you want to disable this client?')">
                         @csrf
-                        @method('DELETE')
+                        @method('PATCH')
                         <button type="submit" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-                            Delete Client
+                            Disable Client
                         </button>
                     </form>
                 @endif

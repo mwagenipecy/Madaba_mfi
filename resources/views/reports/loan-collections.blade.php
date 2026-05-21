@@ -85,25 +85,25 @@
                                         {{ \Carbon\Carbon::parse($collection->paid_date)->format('M d, Y') }}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        {{ $collection->loan->client->first_name }} {{ $collection->loan->client->last_name }}
+                                        {{ $collection->client_name }}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                        {{ $collection->loan->loan_number }}
+                                        {{ $collection->loan_number }}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        {{ $collection->loan->loanProduct->name }}
+                                        {{ $collection->product_name }}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        {{ $collection->installment_number }}/{{ $collection->loan->tenure_months }}
+                                        {{ $collection->installment_number ?? '—' }}/{{ $collection->loan_tenure_months ?? '—' }}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                         TZS {{ number_format($collection->paid_amount, 2) }}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                        {{ $collection->loan->branch->name }}
+                                        {{ $collection->branch_name ?? 'N/A' }}
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                        <a href="{{ route('loans.show', $collection->loan) }}" class="text-green-600 hover:text-green-700">
+                                        <a href="{{ route('loans.show', $collection->loan_number) }}" class="text-green-600 hover:text-green-700">
                                             View Loan
                                         </a>
                                     </td>
@@ -142,7 +142,7 @@
         
         const dates = Object.keys(collectionsByDate).sort();
         const amounts = dates.map(date => {
-            return collectionsByDate[date].reduce((sum, item) => sum + parseFloat(item.amount_paid), 0);
+            return collectionsByDate[date].reduce((sum, item) => sum + parseFloat(item.paid_amount), 0);
         });
         
         new Chart(collectionsCtx, {

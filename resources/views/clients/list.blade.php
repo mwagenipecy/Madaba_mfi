@@ -123,13 +123,15 @@
                                         <a href="{{ route('clients.edit', $client) }}" class="text-blue-600 hover:text-blue-900">
                                             Edit
                                         </a>
-                                        <form method="POST" action="{{ route('clients.destroy', $client) }}" class="inline" onsubmit="return confirm('Are you sure you want to delete this client?')">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button type="submit" class="text-red-600 hover:text-red-900">
-                                                Delete
-                                            </button>
-                                        </form>
+                                        @if($client->status !== 'disabled')
+                                            <form method="POST" action="{{ route('clients.disable', $client) }}" class="inline" onsubmit="return confirm('Are you sure you want to disable this client?')">
+                                                @csrf
+                                                @method('PATCH')
+                                                <button type="submit" class="text-red-600 hover:text-red-900">
+                                                    Disable
+                                                </button>
+                                            </form>
+                                        @endif
                                     </div>
                                 </td>
                             </tr>

@@ -325,19 +325,33 @@
                                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Principal</th>
                                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Interest</th>
                                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid (P / I)</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Outstanding</th>
                                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                                         </tr>
                                     </thead>
                                     <tbody class="bg-white divide-y divide-gray-200">
                                         @foreach($loan->schedules as $schedule)
+                                        @php
+                                            $statusColors = [
+                                                'paid' => 'bg-green-100 text-green-800',
+                                                'partial' => 'bg-orange-100 text-orange-800',
+                                                'overdue' => 'bg-red-100 text-red-800',
+                                                'pending' => 'bg-yellow-100 text-yellow-800',
+                                            ];
+                                        @endphp
                                         <tr>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $schedule->installment_number }}</td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $schedule->due_date->format('M d, Y') }}</td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">TZS {{ number_format($schedule->principal_amount, 2) }}</td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">TZS {{ number_format($schedule->interest_amount, 2) }}</td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">TZS {{ number_format($schedule->total_amount, 2) }}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                                                TZS {{ number_format($schedule->paid_principal_amount ?? 0, 2) }} / {{ number_format($schedule->paid_interest_amount ?? 0, 2) }}
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">TZS {{ number_format($schedule->remaining_total, 2) }}</td>
                                             <td class="px-6 py-4 whitespace-nowrap">
-                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $schedule->status === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800' }}">
+                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $statusColors[$schedule->status] ?? 'bg-gray-100 text-gray-800' }}">
                                                     {{ ucfirst($schedule->status) }}
                                                 </span>
                                             </td>

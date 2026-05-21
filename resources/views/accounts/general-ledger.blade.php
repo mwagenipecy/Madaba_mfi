@@ -6,9 +6,13 @@
                     <div class="flex justify-between items-center mb-6">
                         <h1 class="text-2xl font-bold text-gray-900">General Ledger Statement</h1>
                         <div class="flex space-x-2">
-                            <button class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-                                Export Statement
-                            </button>
+                            <a href="{{ route('accounts.general-ledger.export', request()->query()) }}"
+                               class="inline-flex items-center bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                </svg>
+                                Export Excel
+                            </a>
                         </div>
                     </div>
                     
@@ -61,7 +65,7 @@
                     
                     <!-- Filters -->
                     <form method="GET" class="bg-gray-50 rounded-lg p-4 mb-6">
-                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Account</label>
                                 <select name="account_id" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500">
@@ -92,6 +96,14 @@
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">Date To</label>
                                 <input type="date" name="date_to" value="{{ request('date_to') }}" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1">Per Page</label>
+                                <select name="per_page" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500">
+                                    @foreach([15, 25, 50, 100] as $size)
+                                        <option value="{{ $size }}" {{ (int) request('per_page', 25) === $size ? 'selected' : '' }}>{{ $size }} rows</option>
+                                    @endforeach
+                                </select>
                             </div>
                         </div>
                         <div class="mt-4">
@@ -127,7 +139,7 @@
                                                 {{ $entry->transaction_date->format('M d, Y') }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                {{ $entry->reference_number ?? 'N/A' }}
+                                                {{ $entry->transaction_id ?? 'N/A' }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                                                 <div>
@@ -172,9 +184,16 @@
                             </table>
                         </div>
                         
-                        @if($entries->hasPages())
-                            <div class="px-6 py-4 border-t border-gray-200">
-                                {{ $entries->links() }}
+                        @if($entries->total() > 0)
+                            <div class="px-6 py-4 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                                <p class="text-sm text-gray-600">
+                                    Showing <span class="font-medium">{{ $entries->firstItem() }}</span>
+                                    to <span class="font-medium">{{ $entries->lastItem() }}</span>
+                                    of <span class="font-medium">{{ $entries->total() }}</span> entries
+                                </p>
+                                <div>
+                                    {{ $entries->onEachSide(1)->links('pagination::tailwind') }}
+                                </div>
                             </div>
                         @endif
                     </div>

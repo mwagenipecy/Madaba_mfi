@@ -10,6 +10,7 @@ use App\Models\RepaymentRecord;
 use App\Models\GeneralLedger;
 use App\Models\Account;
 use App\Models\Organization;
+use App\Services\LoanRepaymentAllocator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -43,6 +44,7 @@ class RepaymentController extends Controller
         $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
 
         $clients = Client::where('organization_id', $organizationId)
+            ->enabled()
             ->where(function($q) use ($query) {
                 $q->where('first_name', 'like', "%{$query}%")
                   ->orWhere('last_name', 'like', "%{$query}%")
@@ -68,7 +70,8 @@ class RepaymentController extends Controller
 
                 return [
                     'id' => $client->id,
-                    'name' => $client->first_name . ' ' . $client->last_name,
+                    'uuid' => $client->uuid,
+                    'name' => $client->display_name,
                     'client_number' => $client->client_number,
                     'phone' => $client->phone_number,
                     'email' => $client->email,
@@ -98,6 +101,10 @@ class RepaymentController extends Controller
     public function getClientDetails(Request $request, Client $client)
     {
         $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
+
+        if ($client->organization_id !== $organizationId) {
+            return response()->json(['message' => 'Client not found.'], 404);
+        }
         
         // Get active loans with schedules
         $loans = $client->loans()
@@ -130,7 +137,8 @@ class RepaymentController extends Controller
         return response()->json([
             'client' => [
                 'id' => $client->id,
-                'name' => $client->first_name . ' ' . $client->last_name,
+                'uuid' => $client->uuid,
+                'name' => $client->display_name,
                 'client_number' => $client->client_number,
                 'phone' => $client->phone_number,
                 'email' => $client->email,
@@ -146,15 +154,23 @@ class RepaymentController extends Controller
                     'next_due_amount' => $nextSchedule ? $nextSchedule->total_amount : 0,
                     'next_due_date' => $nextSchedule ? $nextSchedule->due_date : null,
                     'total_overdue' => $loan->schedules->where('status', 'overdue')->sum('outstanding_amount'),
-                    'schedules' => $loan->schedules->take(5)->map(function($schedule) {
+                    'schedules' => $loan->schedules->map(function($schedule) {
+                        $schedule->refreshStatus();
                         return [
                             'id' => $schedule->id,
                             'installment_number' => $schedule->installment_number,
-                            'due_date' => $schedule->due_date,
+                            'due_date' => $schedule->due_date->format('Y-m-d'),
+                            'principal_amount' => $schedule->principal_amount,
+                            'interest_amount' => $schedule->interest_amount,
+                            'paid_principal' => $schedule->paid_principal_amount ?? 0,
+                            'paid_interest' => $schedule->paid_interest_amount ?? 0,
+                            'remaining_principal' => $schedule->remaining_principal,
+                            'remaining_interest' => $schedule->remaining_interest,
                             'total_amount' => $schedule->total_amount,
                             'paid_amount' => $schedule->paid_amount,
-                            'outstanding_amount' => $schedule->outstanding_amount,
+                            'outstanding_amount' => $schedule->remaining_total,
                             'status' => $schedule->status,
+                            'is_due' => $schedule->is_due_reached,
                         ];
                     })
                 ];
@@ -197,6 +213,7 @@ class RepaymentController extends Controller
             $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
             $paymentAmount = $request->payment_amount;
             $remainingAmount = $paymentAmount;
+            $allocationResult = ['allocations' => [], 'unallocated' => 0, 'total_applied' => 0];
 
             // Process loan repayment
             if (in_array($request->payment_type, ['loan_repayment', 'both'])) {
@@ -208,9 +225,8 @@ class RepaymentController extends Controller
 
                 $loanPaymentAmount = min($remainingAmount, $loan->calculated_outstanding_amount);
                 
-                // Process loan payment
-                $this->processLoanPayment($loan, $loanPaymentAmount, $request, $organizationId);
-                $remainingAmount -= $loanPaymentAmount;
+                $allocationResult = $this->processLoanPayment($loan, $loanPaymentAmount, $request, $organizationId);
+                $remainingAmount -= $allocationResult['total_applied'];
             }
 
             // Process charge payment
@@ -290,11 +306,15 @@ class RepaymentController extends Controller
                 'processed_by' => $processedBy ? ($processedBy->first_name . ' ' . $processedBy->last_name) : 'System',
             ];
 
+            $allocationDetails = $allocationResult['allocations'] ?? [];
+
             return response()->json([
                 'success' => true,
-                'message' => 'Payment processed successfully. Amount: TZS ' . number_format($paymentAmount, 2),
+                'message' => 'Payment processed successfully. Amount: TZS ' . number_format($paymentAmount - $remainingAmount, 2),
                 'processed_amount' => $paymentAmount - $remainingAmount,
                 'remaining_amount' => $remainingAmount,
+                'allocation' => $allocationDetails,
+                'unallocated' => $allocationResult['unallocated'] ?? 0,
                 'receipt' => $receiptData,
             ]);
 
@@ -308,52 +328,48 @@ class RepaymentController extends Controller
     }
 
     /**
-     * Process loan payment
+     * Process loan payment with schedule-aware allocation.
      */
     private function processLoanPayment(Loan $loan, $amount, Request $request, $organizationId)
     {
-        // Calculate principal and interest portions
-        $principalAmount = 0;
-        $interestAmount = 0;
-        
-        // Get the next due schedule
-        $nextSchedule = $loan->schedules()->where('status', 'pending')->orderBy('due_date')->first();
-        
-        if ($nextSchedule) {
-            // If payment is less than or equal to scheduled amount, split proportionally
-            if ($amount <= $nextSchedule->outstanding_amount) {
-                $principalAmount = $amount * ($nextSchedule->principal_amount / $nextSchedule->total_amount);
-                $interestAmount = $amount * ($nextSchedule->interest_amount / $nextSchedule->total_amount);
-            } else {
-                // If payment exceeds scheduled amount, apply to principal
-                $interestAmount = $nextSchedule->interest_amount;
-                $principalAmount = $amount - $interestAmount;
-            }
-        } else {
-            // No schedule, apply to principal
-            $principalAmount = $amount;
+        $allocator = new LoanRepaymentAllocator();
+        $result = $allocator->allocate($loan, (float) $amount);
+
+        if ($result['total_applied'] <= 0) {
+            throw new \Exception('No outstanding installments to apply this payment to.');
         }
 
-        // Create loan transaction
+        $principalAmount = $result['total_principal'];
+        $interestAmount = $result['total_interest'];
+        $appliedAmount = $result['total_applied'];
+        $firstScheduleId = $result['allocations'][0]['schedule_id'] ?? null;
+
+        $allocationSummary = collect($result['allocations'])->map(function ($row) {
+            $mode = $row['allocation_mode'] === 'due_interest_first' ? 'Due: interest→principal' : 'Early: principal→interest';
+            return "#{$row['installment_number']} ({$mode}): TZS " . number_format($row['total'], 2)
+                . " [P: " . number_format($row['principal'], 2) . ", I: " . number_format($row['interest'], 2) . "]";
+        })->implode('; ');
+
+        $notes = trim(($request->payment_notes ?? '') . "\nAllocation: " . $allocationSummary);
+
         $transaction = LoanTransaction::create([
             'loan_id' => $loan->id,
-            'loan_schedule_id' => $nextSchedule ? $nextSchedule->id : null,
+            'loan_schedule_id' => $firstScheduleId,
             'transaction_number' => LoanTransaction::generateTransactionNumber(),
-            'transaction_type' => 'principal_payment', // Use the correct enum value
-            'amount' => $amount,
+            'transaction_type' => 'principal_payment',
+            'amount' => $appliedAmount,
             'principal_amount' => $principalAmount,
             'interest_amount' => $interestAmount,
             'transaction_date' => now(),
             'payment_method' => $request->payment_method,
             'reference_number' => $request->payment_reference,
-            'notes' => $request->payment_notes,
+            'notes' => $notes,
             'processed_by' => auth()->id(),
             'organization_id' => $organizationId,
             'branch_id' => $loan->branch_id,
             'status' => 'completed',
         ]);
 
-        // Record in dedicated repayment_records table (who did the transaction)
         RepaymentRecord::create([
             'organization_id' => $organizationId,
             'branch_id' => $loan->branch_id,
@@ -361,7 +377,7 @@ class RepaymentController extends Controller
             'client_id' => $loan->client_id,
             'loan_transaction_id' => $transaction->id,
             'transaction_number' => $transaction->transaction_number,
-            'amount' => $amount,
+            'amount' => $appliedAmount,
             'principal_amount' => $principalAmount,
             'interest_amount' => $interestAmount,
             'payment_method' => $request->payment_method,
@@ -369,35 +385,13 @@ class RepaymentController extends Controller
             'recorded_by' => auth()->id(),
             'collection_account_id' => $request->collection_account_id ?? null,
             'reference_number' => $request->payment_reference,
-            'notes' => $request->payment_notes,
+            'notes' => $notes,
             'payment_type' => 'loan_repayment',
         ]);
 
-        // Update loan outstanding balance
-        $loan->paid_amount += $amount;
-        $loan->payments_made += 1;
-        $loan->outstanding_balance = $loan->calculated_outstanding_amount;
-        
-        // Check if loan is fully paid
-        if ($loan->calculated_outstanding_amount <= 0) {
-            $loan->status = 'completed';
-            $loan->closure_date = now();
-            $loan->closed_by = auth()->id();
-        }
-        
-        $loan->save();
+        $allocator->syncLoanTotals($loan);
 
-        // Update loan schedule if applicable
-        if ($nextSchedule) {
-            $nextSchedule->paid_amount += $amount;
-            if ($nextSchedule->paid_amount >= $nextSchedule->total_amount) {
-                $nextSchedule->status = 'paid';
-                $nextSchedule->paid_date = now();
-            } else {
-                $nextSchedule->status = 'partial';
-            }
-            $nextSchedule->save();
-        }
+        return $result;
     }
 
     /**

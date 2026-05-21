@@ -342,6 +342,7 @@
                                             class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
                                         <option value="active" {{ old('status', $client->status) == 'active' ? 'selected' : '' }}>Active</option>
                                         <option value="inactive" {{ old('status', $client->status) == 'inactive' ? 'selected' : '' }}>Inactive</option>
+                                        <option value="disabled" {{ old('status', $client->status) == 'disabled' ? 'selected' : '' }}>Disabled</option>
                                         <option value="suspended" {{ old('status', $client->status) == 'suspended' ? 'selected' : '' }}>Suspended</option>
                                         <option value="blacklisted" {{ old('status', $client->status) == 'blacklisted' ? 'selected' : '' }}>Blacklisted</option>
                                     </select>

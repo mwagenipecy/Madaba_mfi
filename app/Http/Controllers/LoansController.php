@@ -10,6 +10,7 @@ use App\Models\LoanProduct;
 use App\Models\Branch;
 use App\Models\User;
 use App\Models\Organization;
+use App\Services\LoanRepaymentAllocator;
 use App\Models\Account;
 use App\Models\SystemLog;
 use Illuminate\Http\Request;
@@ -1265,39 +1266,28 @@ class LoansController extends Controller
             $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
             $paymentAmount = $request->payment_amount;
             
-            // Check if payment amount exceeds outstanding balance
-            if ($paymentAmount > $loan->outstanding_balance) {
-                return redirect()->back()->with('error', 'Payment amount cannot exceed outstanding balance.');
+            if ($loan->calculated_outstanding_amount <= 0) {
+                return redirect()->back()->with('error', 'This loan has no outstanding balance.');
             }
 
-            // Calculate principal and interest portions
-            $principalAmount = 0;
-            $interestAmount = 0;
-            
-            // Get the next due schedule
-            $nextSchedule = $loan->schedules()->where('status', 'pending')->orderBy('due_date')->first();
-            
-            if ($nextSchedule) {
-                // If payment is less than or equal to scheduled amount, split proportionally
-                if ($paymentAmount <= $nextSchedule->amount) {
-                    $principalAmount = $paymentAmount * ($nextSchedule->principal_amount / $nextSchedule->amount);
-                    $interestAmount = $paymentAmount * ($nextSchedule->interest_amount / $nextSchedule->amount);
-                } else {
-                    // If payment exceeds scheduled amount, apply to principal
-                    $interestAmount = $nextSchedule->interest_amount;
-                    $principalAmount = $paymentAmount - $interestAmount;
-                }
-            } else {
-                // No schedule, apply to principal
-                $principalAmount = $paymentAmount;
+            $allocator = new LoanRepaymentAllocator();
+            $result = $allocator->allocate($loan, (float) $paymentAmount);
+
+            if ($result['total_applied'] <= 0) {
+                return redirect()->back()->with('error', 'No outstanding installments to apply this payment to.');
             }
 
-            // Create loan transaction
+            $principalAmount = $result['total_principal'];
+            $interestAmount = $result['total_interest'];
+            $appliedAmount = $result['total_applied'];
+            $firstScheduleId = $result['allocations'][0]['schedule_id'] ?? null;
+
             $transaction = LoanTransaction::create([
                 'loan_id' => $loan->id,
+                'loan_schedule_id' => $firstScheduleId,
                 'transaction_number' => LoanTransaction::generateTransactionNumber(),
                 'transaction_type' => 'principal_payment',
-                'amount' => $paymentAmount,
+                'amount' => $appliedAmount,
                 'principal_amount' => $principalAmount,
                 'interest_amount' => $interestAmount,
                 'transaction_date' => now(),
@@ -1310,32 +1300,9 @@ class LoansController extends Controller
                 'status' => 'completed',
             ]);
 
-            // Update loan outstanding balance
-            $loan->outstanding_balance -= $principalAmount;
-            $loan->paid_amount += $paymentAmount;
-            $loan->payments_made += 1;
-            
-            // Check if loan is fully paid
-            if ($loan->outstanding_balance <= 0) {
-                $loan->status = 'completed';
-                $loan->closure_date = now();
-                $loan->closed_by = auth()->id();
-            }
-            
-            $loan->save();
+            $allocator->syncLoanTotals($loan);
 
-            // Update loan schedule if applicable
-            if ($nextSchedule) {
-                $nextSchedule->paid_amount += $paymentAmount;
-                if ($nextSchedule->paid_amount >= $nextSchedule->total_amount) {
-                    $nextSchedule->status = 'paid';
-                    $nextSchedule->paid_date = now();
-                }
-                $nextSchedule->save();
-            }
-
-            // Record in General Ledger
-            $this->recordLoanRepaymentInLedger($loan, $paymentAmount, $principalAmount, $interestAmount);
+            $this->recordLoanRepaymentInLedger($loan, $appliedAmount, $principalAmount, $interestAmount);
 
             // Build receipt data for session flash
             $loan->load('loanProduct', 'client');
@@ -1361,12 +1328,12 @@ class LoansController extends Controller
                 'loan' => [
                     'loan_number' => $loan->loan_number,
                     'product_name' => $loan->loanProduct->name ?? 'N/A',
-                    'outstanding_before' => ($loan->outstanding_balance ?? 0) + $principalAmount,
+                    'outstanding_before' => ($loan->outstanding_balance ?? 0) + $appliedAmount,
                     'outstanding_after' => $loan->outstanding_balance ?? 0,
                 ],
                 'payment' => [
                     'type' => 'Loan Repayment',
-                    'amount' => $paymentAmount,
+                    'amount' => $appliedAmount,
                     'method' => ucfirst(str_replace('_', ' ', $request->payment_method)),
                     'reference' => $request->payment_reference ?? 'N/A',
                     'notes' => $request->payment_notes ?? '',
@@ -1375,7 +1342,7 @@ class LoansController extends Controller
             ];
 
             return redirect()->back()
-                ->with('success', 'Payment processed successfully. Amount: TZS ' . number_format($paymentAmount, 2))
+                ->with('success', 'Payment processed successfully. Amount: TZS ' . number_format($appliedAmount, 2))
                 ->with('receipt', $receiptData);
 
         } catch (\Exception $e) {

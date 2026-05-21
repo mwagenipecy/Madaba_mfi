@@ -178,7 +178,7 @@
                                 @forelse($repayments as $repayment)
                                     <tr>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                            {{ $repayment->transaction_date->format('M d, Y') }}
+                                            {{ $repayment->transaction_date?->format('M d, Y') ?? '—' }}
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                                             {{ $repayment->transaction_number }}
@@ -199,7 +199,7 @@
                                             TZS {{ number_format($repayment->interest_amount, 2) }}
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                            {{ ucfirst(str_replace('_', ' ', $repayment->payment_method)) }}
+                                            {{ $repayment->payment_method ? ucfirst(str_replace('_', ' ', $repayment->payment_method)) : '—' }}
                                         </td>
                                     </tr>
                                 @empty

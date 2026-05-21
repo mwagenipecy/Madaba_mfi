@@ -20,6 +20,8 @@ class LoanSchedule extends Model
         'total_amount',
         'status',
         'paid_amount',
+        'paid_principal_amount',
+        'paid_interest_amount',
         'outstanding_amount',
         'paid_date',
         'days_overdue',
@@ -35,6 +37,8 @@ class LoanSchedule extends Model
         'interest_amount' => 'decimal:2',
         'total_amount' => 'decimal:2',
         'paid_amount' => 'decimal:2',
+        'paid_principal_amount' => 'decimal:2',
+        'paid_interest_amount' => 'decimal:2',
         'outstanding_amount' => 'decimal:2',
         'late_fee' => 'decimal:2',
         'penalty_fee' => 'decimal:2',
@@ -118,6 +122,26 @@ class LoanSchedule extends Model
         return 'TZS ' . number_format($this->outstanding_amount, 2);
     }
 
+    public function getRemainingPrincipalAttribute(): float
+    {
+        return max(0, round((float) $this->principal_amount - (float) ($this->paid_principal_amount ?? 0), 2));
+    }
+
+    public function getRemainingInterestAttribute(): float
+    {
+        return max(0, round((float) $this->interest_amount - (float) ($this->paid_interest_amount ?? 0), 2));
+    }
+
+    public function getRemainingTotalAttribute(): float
+    {
+        return round($this->remaining_principal + $this->remaining_interest, 2);
+    }
+
+    public function getIsDueReachedAttribute(): bool
+    {
+        return $this->due_date->lte(today());
+    }
+
     public function getIsOverdueAttribute(): bool
     {
         return $this->due_date < today() && $this->status !== 'paid';
@@ -132,21 +156,56 @@ class LoanSchedule extends Model
     }
 
     // Methods
+    public function applyPayment(float $principalPaid, float $interestPaid): void
+    {
+        $this->paid_principal_amount = round((float) ($this->paid_principal_amount ?? 0) + $principalPaid, 2);
+        $this->paid_interest_amount = round((float) ($this->paid_interest_amount ?? 0) + $interestPaid, 2);
+        $this->paid_amount = round($this->paid_principal_amount + $this->paid_interest_amount, 2);
+        $this->outstanding_amount = $this->remaining_total;
+
+        $this->refreshStatus();
+        $this->save();
+    }
+
+    public function refreshStatus(): void
+    {
+        if ($this->remaining_total <= 0.01) {
+            $this->status = 'paid';
+            $this->paid_date = $this->paid_date ?? now();
+            $this->outstanding_amount = 0;
+            $this->days_overdue = 0;
+            return;
+        }
+
+        if ($this->paid_amount > 0) {
+            $this->status = 'partial';
+            return;
+        }
+
+        if ($this->due_date->lt(today())) {
+            $this->status = 'overdue';
+            $this->days_overdue = $this->due_date->diffInDays(today());
+            return;
+        }
+
+        $this->status = 'pending';
+        $this->days_overdue = 0;
+    }
+
     public function markAsPaid($amount = null, $date = null): void
     {
-        $this->status = 'paid';
+        $this->paid_principal_amount = $this->principal_amount;
+        $this->paid_interest_amount = $this->interest_amount;
         $this->paid_amount = $amount ?? $this->total_amount;
-        $this->outstanding_amount = $this->total_amount - $this->paid_amount;
+        $this->outstanding_amount = 0;
+        $this->status = 'paid';
         $this->paid_date = $date ?? now();
         $this->save();
     }
 
     public function markAsOverdue(): void
     {
-        if ($this->due_date < today() && $this->status === 'pending') {
-            $this->status = 'overdue';
-            $this->days_overdue = $this->due_date->diffInDays(today());
-            $this->save();
-        }
+        $this->refreshStatus();
+        $this->save();
     }
 }

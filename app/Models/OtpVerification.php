@@ -66,8 +66,7 @@ class OtpVerification extends Model
      */
     public static function generateForUser($userId, $ipAddress = null, $userAgent = null)
     {
-        // For now, always use 111111 as requested
-        $otpCode = '111111';
+        $otpCode = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
         
         // Expire in 10 minutes
         $expiresAt = now()->addMinutes(10);

@@ -7,12 +7,27 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 class Client extends Model
 {
     use HasFactory, SoftDeletes;
 
+    protected static function booted(): void
+    {
+        static::creating(function (Client $client) {
+            if (empty($client->uuid)) {
+                $client->uuid = (string) Str::uuid();
+            }
+
+            if (empty($client->client_number)) {
+                $client->client_number = static::generateClientNumber();
+            }
+        });
+    }
+
     protected $fillable = [
+        'uuid',
         'client_number',
         'client_type',
         'organization_id',
@@ -112,6 +127,11 @@ class Client extends Model
         return $query->where('status', 'active');
     }
 
+    public function scopeEnabled($query)
+    {
+        return $query->where('status', '!=', 'disabled');
+    }
+
     public function scopeIndividual($query)
     {
         return $query->where('client_type', 'individual');
@@ -165,6 +185,7 @@ class Client extends Model
         return match($this->status) {
             'active' => 'bg-green-100 text-green-800',
             'inactive' => 'bg-gray-100 text-gray-800',
+            'disabled' => 'bg-gray-100 text-gray-800',
             'suspended' => 'bg-yellow-100 text-yellow-800',
             'blacklisted' => 'bg-red-100 text-red-800',
             default => 'bg-gray-100 text-gray-800',
@@ -194,6 +215,11 @@ class Client extends Model
     public function getAgeAttribute(): ?int
     {
         return $this->date_of_birth ? $this->date_of_birth->age : null;
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
     }
 
     // Static Methods

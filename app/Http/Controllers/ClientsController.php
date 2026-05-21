@@ -20,12 +20,15 @@ class ClientsController extends Controller
         $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
         
         // Get client statistics
-        $totalClients = Client::where('organization_id', $organizationId)->count();
+        $totalClients = Client::where('organization_id', $organizationId)->enabled()->count();
         $individualClients = Client::where('organization_id', $organizationId)
+            ->enabled()
             ->where('client_type', 'individual')->count();
         $businessClients = Client::where('organization_id', $organizationId)
+            ->enabled()
             ->whereIn('client_type', ['business', 'group'])->count();
         $pendingKyc = Client::where('organization_id', $organizationId)
+            ->enabled()
             ->where('kyc_status', 'pending')->count();
         
         return view('clients.index', compact('totalClients', 'individualClients', 'businessClients', 'pendingKyc'));
@@ -39,6 +42,7 @@ class ClientsController extends Controller
         $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
         
         $clients = Client::where('organization_id', $organizationId)
+            ->enabled()
             ->where('client_type', 'individual')
             ->with(['organization', 'branch', 'verifiedBy'])
             ->latest()
@@ -55,6 +59,7 @@ class ClientsController extends Controller
         $organizationId = auth()->user()->organization_id ?? Organization::first()?->id;
         
         $clients = Client::where('organization_id', $organizationId)
+            ->enabled()
             ->whereIn('client_type', ['business', 'group'])
             ->with(['organization', 'branch', 'verifiedBy'])
             ->latest()
@@ -585,16 +590,27 @@ class ClientsController extends Controller
     }
 
     /**
-     * Remove the specified client (soft delete)
+     * Disable the specified client (sets status to disabled)
      */
-    public function destroy(Client $client)
+    public function disable(Client $client)
     {
-        $client->delete();
+        if ($client->organization_id !== Auth::user()->organization_id) {
+            abort(403, 'Unauthorized access to client.');
+        }
 
-        // Log the client deletion
+        if ($client->status === 'disabled') {
+            return redirect()->route('clients.show', $client)
+                ->with('info', 'Client is already disabled.');
+        }
+
+        $client->update([
+            'status' => 'disabled',
+            'updated_by' => Auth::id(),
+        ]);
+
         SystemLog::log(
-            'Client deleted',
-            'Client ' . $client->display_name . ' (' . $client->client_number . ') was deleted',
+            'Client disabled',
+            'Client ' . $client->display_name . ' (' . $client->client_number . ') was disabled',
             'warning',
             $client,
             Auth::id(),
@@ -602,7 +618,7 @@ class ClientsController extends Controller
         );
 
         return redirect()->route('clients.index')
-            ->with('success', 'Client deleted successfully.');
+            ->with('success', 'Client has been disabled successfully.');
     }
 
     /**

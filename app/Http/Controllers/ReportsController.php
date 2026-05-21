@@ -1009,8 +1009,8 @@ class ReportsController extends Controller
         $organizationId = $user->organization_id;
         $branchId = $user->branch_id;
 
-        $startDate = $request->get('start_date', Carbon::now()->startOfMonth());
-        $endDate = $request->get('end_date', Carbon::now()->endOfMonth());
+        $startDate = Carbon::parse($request->get('start_date', Carbon::now()->startOfMonth()))->startOfDay();
+        $endDate = Carbon::parse($request->get('end_date', Carbon::now()->endOfMonth()))->endOfDay();
 
         // Optimized approach: Use a single query with proper joins instead of whereHas
         // This eliminates N+1 queries and improves performance significantly
@@ -1023,8 +1023,7 @@ class ReportsController extends Controller
             ->leftJoin('branches as b', 'l.branch_id', '=', 'b.id')
             ->leftJoin('loan_schedules as ls', 'lt.loan_schedule_id', '=', 'ls.id')
             ->where('lt.organization_id', $organizationId)
-            ->where('lt.transaction_type', 'principal_payment')
-            ->orWhere('lt.transaction_type', 'interest_payment')
+            ->whereIn('lt.transaction_type', ['principal_payment', 'interest_payment'])
             ->where('lt.status', 'completed')
             ->whereBetween('lt.transaction_date', [$startDate, $endDate])
             ->when($branchId, function($query) use ($branchId) {
@@ -1038,6 +1037,7 @@ class ReportsController extends Controller
                 'lt.loan_schedule_id',
                 'l.id as loan_id',
                 'l.loan_number',
+                'l.loan_tenure_months',
                 'c.first_name',
                 'c.last_name',
                 'c.phone_number',
@@ -1073,6 +1073,7 @@ class ReportsController extends Controller
                 'ls.id as loan_schedule_id',
                 'l.id as loan_id',
                 'l.loan_number',
+                'l.loan_tenure_months',
                 'c.first_name',
                 'c.last_name',
                 'c.phone_number',
@@ -1095,6 +1096,7 @@ class ReportsController extends Controller
                 'type' => $item->transaction_type,
                 'loan_id' => $item->loan_id,
                 'loan_number' => $item->loan_number,
+                'loan_tenure_months' => $item->loan_tenure_months,
                 'client_name' => "{$item->first_name} {$item->last_name}",
                 'client_phone' => $item->phone_number,
                 'product_name' => $item->product_name,
@@ -1465,69 +1467,69 @@ class ReportsController extends Controller
         $organizationId = $user->organization_id;
         $branchId = $user->branch_id ?? null;
 
-        $query = LoanSchedule::whereHas('loan', function($q) use ($organizationId, $branchId) {
-            $q->where('organization_id', $organizationId);
-            if ($branchId) {
-                $q->where('branch_id', $branchId);
-            }
-        })
-        ->where('status', 'paid')
-        ->with(['loan.client', 'loan.loanProduct', 'loan.loanOfficer']);
+        $query = LoanTransaction::where('organization_id', $organizationId)
+            ->where('transaction_type', 'principal_payment')
+            ->where('status', 'completed');
 
-        // Filter by date range
-        if ($request->filled('date_from') && $request->filled('date_to')) {
-            $query->whereBetween('paid_date', [$request->date_from, $request->date_to]);
+        if ($branchId) {
+            $query->where('branch_id', $branchId);
         }
 
-        $repayments = $query->orderBy('paid_date', 'desc')->paginate(20);
+        if ($request->filled('date_from') && $request->filled('date_to')) {
+            $query->whereBetween('transaction_date', [$request->date_from, $request->date_to]);
+        }
 
-        // Calculate totals
-        $totalRepayments = $repayments->sum('paid_amount');
-        $totalPrincipal = $repayments->sum('principal_amount');
-        $totalInterest = $repayments->sum('interest_amount');
-        
-        // This month's total
-        $thisMonthTotal = LoanSchedule::whereHas('loan', function($q) use ($organizationId, $branchId) {
-            $q->where('organization_id', $organizationId);
-            if ($branchId) {
-                $q->where('branch_id', $branchId);
-            }
-        })
-        ->where('status', 'paid')
-        ->whereMonth('paid_date', Carbon::now()->month)
-        ->whereYear('paid_date', Carbon::now()->year)
-        ->sum('paid_amount');
+        if ($request->filled('loan_officer_id')) {
+            $query->whereHas('loan', function ($q) use ($request) {
+                $q->where('loan_officer_id', $request->loan_officer_id);
+            });
+        }
 
-        // Get trends for last 6 months
+        if ($request->filled('client_id')) {
+            $query->whereHas('loan', function ($q) use ($request) {
+                $q->where('client_id', $request->client_id);
+            });
+        }
+
+        $repayments = (clone $query)
+            ->with(['loan.client', 'loan.loanOfficer'])
+            ->orderBy('transaction_date', 'desc')
+            ->orderBy('id', 'desc')
+            ->paginate(20);
+
+        $totalRepayments = (clone $query)->sum('amount');
+        $totalPrincipal = (clone $query)->sum('principal_amount');
+        $totalInterest = (clone $query)->sum('interest_amount');
+
+        $thisMonthQuery = LoanTransaction::where('organization_id', $organizationId)
+            ->where('transaction_type', 'principal_payment')
+            ->where('status', 'completed')
+            ->whereMonth('transaction_date', Carbon::now()->month)
+            ->whereYear('transaction_date', Carbon::now()->year);
+
+        if ($branchId) {
+            $thisMonthQuery->where('branch_id', $branchId);
+        }
+
+        $thisMonthTotal = $thisMonthQuery->sum('amount');
+
         $trends = [];
         for ($i = 5; $i >= 0; $i--) {
             $date = Carbon::now()->subMonths($i);
-            $amount = LoanSchedule::whereHas('loan', function($q) use ($organizationId, $branchId) {
-                $q->where('organization_id', $organizationId);
-                if ($branchId) {
-                    $q->where('branch_id', $branchId);
-                }
-            })
-            ->where('status', 'paid')
-            ->whereMonth('paid_date', $date->month)
-            ->whereYear('paid_date', $date->year)
-            ->sum('paid_amount');
-            
-            $count = LoanSchedule::whereHas('loan', function($q) use ($organizationId, $branchId) {
-                $q->where('organization_id', $organizationId);
-                if ($branchId) {
-                    $q->where('branch_id', $branchId);
-                }
-            })
-            ->where('status', 'paid')
-            ->whereMonth('paid_date', $date->month)
-            ->whereYear('paid_date', $date->year)
-            ->count();
-            
+            $monthQuery = LoanTransaction::where('organization_id', $organizationId)
+                ->where('transaction_type', 'principal_payment')
+                ->where('status', 'completed')
+                ->whereMonth('transaction_date', $date->month)
+                ->whereYear('transaction_date', $date->year);
+
+            if ($branchId) {
+                $monthQuery->where('branch_id', $branchId);
+            }
+
             $trends[] = [
                 'month' => $date->format('M Y'),
-                'amount' => $amount,
-                'count' => $count
+                'amount' => $monthQuery->sum('amount'),
+                'count' => (clone $monthQuery)->count(),
             ];
         }
 
