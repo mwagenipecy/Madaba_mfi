@@ -100,7 +100,7 @@
                     </div>
                 </a>
 
-                <a href="{{ route('organization-settings.mapped-account-balances') }}" class="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                <a href="{{ auth()->user()->isAdmin() ? route('organization-settings.mapped-account-balances') : route('accounts.mapped') }}" class="flex items-center p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                     <div class="p-2 bg-purple-100 rounded-lg">
                         <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>

@@ -111,7 +111,6 @@
                         <select id="role" name="role" required
                                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 @error('role') border-red-500 @enderror">
                             <option value="">Select role</option>
-                            <option value="super_admin" {{ old('role') === 'super_admin' ? 'selected' : '' }}>Super Admin</option>
                             <option value="admin" {{ old('role') === 'admin' ? 'selected' : '' }}>Admin</option>
                             <option value="manager" {{ old('role') === 'manager' ? 'selected' : '' }}>Manager</option>
                             <option value="loan_officer" {{ old('role') === 'loan_officer' ? 'selected' : '' }}>Loan Officer</option>

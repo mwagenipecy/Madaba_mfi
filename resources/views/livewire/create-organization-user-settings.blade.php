@@ -48,7 +48,9 @@
                         <option value="loan_officer">Loan Officer</option>
                         <option value="manager">Manager</option>
                         <option value="admin">Admin</option>
-                        <option value="super_admin">Super Admin</option>
+                        @if(auth()->user()->isSuperAdmin())
+                            <option value="super_admin">Super Admin</option>
+                        @endif
                     </select>
                     @error('role')<p class="mt-1 text-sm text-red-600">{{ $message }}</p>@enderror
                 </div>

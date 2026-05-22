@@ -163,7 +163,7 @@ class BranchController extends Controller
             'last_name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'phone' => 'nullable|string|max:20',
-            'role' => 'required|in:super_admin,admin,manager,loan_officer,accountant,cashier,field_agent',
+            'role' => 'required|in:admin,manager,loan_officer,accountant,cashier,field_agent',
             'password' => 'required|string|min:8|confirmed',
         ]);
 

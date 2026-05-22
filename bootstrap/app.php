@@ -15,6 +15,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'otp.verified' => \App\Http\Middleware\OtpVerified::class,
+            'super_admin' => \App\Http\Middleware\EnsureSuperAdmin::class,
+            'org_admin' => \App\Http\Middleware\EnsureOrgAdmin::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

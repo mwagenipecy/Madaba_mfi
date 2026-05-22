@@ -20,9 +20,11 @@
                     <h1 class="text-2xl font-bold text-gray-900">Real Accounts</h1>
                     <p class="text-gray-600 mt-1">External system integration (MNO/Bank) with real-time balance sync</p>
                 </div>
-                <a href="{{ route('organization-settings.mapped-account-balances') }}" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-                    Add Real Account
-                </a>
+                @if(auth()->user()->isAdmin())
+                    <a href="{{ route('organization-settings.mapped-account-balances') }}" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                        Add Real Account
+                    </a>
+                @endif
             </div>
         </div>
 
@@ -149,20 +151,22 @@
                                                 </form>
                                             @endif
                                             
-                                            <a href="{{ route('organization-settings.real-accounts.edit', $realAccount) }}" 
-                                               class="text-green-600 hover:text-green-900 bg-green-50 hover:bg-green-100 px-3 py-1 rounded-md text-xs font-medium transition-colors">
-                                                Edit
-                                            </a>
-                                            
-                                            <form method="POST" action="{{ route('organization-settings.real-accounts.destroy', $realAccount) }}" class="inline">
-                                                @csrf
-                                                @method('DELETE')
-                                                <button type="submit" 
-                                                        class="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 px-3 py-1 rounded-md text-xs font-medium transition-colors"
-                                                        onclick="return confirm('Are you sure you want to delete this real account?')">
-                                                    Delete
-                                                </button>
-                                            </form>
+                                            @if(auth()->user()->isAdmin())
+                                                <a href="{{ route('organization-settings.real-accounts.edit', $realAccount) }}" 
+                                                   class="text-green-600 hover:text-green-900 bg-green-50 hover:bg-green-100 px-3 py-1 rounded-md text-xs font-medium transition-colors">
+                                                    Edit
+                                                </a>
+                                                
+                                                <form method="POST" action="{{ route('organization-settings.real-accounts.destroy', $realAccount) }}" class="inline">
+                                                    @csrf
+                                                    @method('DELETE')
+                                                    <button type="submit" 
+                                                            class="text-red-600 hover:text-red-900 bg-red-50 hover:bg-red-100 px-3 py-1 rounded-md text-xs font-medium transition-colors"
+                                                            onclick="return confirm('Are you sure you want to delete this real account?')">
+                                                        Delete
+                                                    </button>
+                                                </form>
+                                            @endif
                                         </div>
                                     </td>
                                 </tr>
@@ -177,11 +181,13 @@
                     </svg>
                     <h3 class="text-lg font-medium text-gray-900 mt-2">No real accounts found</h3>
                     <p class="text-sm mt-1">Get started by adding your first external account integration.</p>
-                    <div class="mt-4">
-                        <a href="{{ route('organization-settings.mapped-account-balances') }}" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-                            Add Real Account
-                        </a>
-                    </div>
+                    @if(auth()->user()->isAdmin())
+                        <div class="mt-4">
+                            <a href="{{ route('organization-settings.mapped-account-balances') }}" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                                Add Real Account
+                            </a>
+                        </div>
+                    @endif
                 </div>
             @endif
         </div>

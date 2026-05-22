@@ -56,6 +56,11 @@ class CreateOrganizationUserSettings extends Component
         $this->validate();
 
         $currentUser = Auth::user();
+
+        if ($this->role === 'super_admin' && ! $currentUser->isSuperAdmin()) {
+            session()->flash('error', 'Only a super administrator can assign the super admin role.');
+            return;
+        }
         
         if (!$currentUser || !$currentUser->organization_id) {
             session()->flash('error', 'Unable to determine organization.');

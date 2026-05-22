@@ -123,9 +123,11 @@
                                     </td>
                                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                         <div class="flex space-x-2">
-                                            <a href="{{ route('organization-settings.users.edit', $user) }}" class="text-green-600 hover:text-green-900 bg-green-50 hover:bg-green-100 px-3 py-1 rounded-md text-xs font-medium transition-colors">
-                                                Edit
-                                            </a>
+                                            @if(auth()->user()->isAdmin())
+                                                <a href="{{ route('organization-settings.users.edit', $user) }}" class="text-green-600 hover:text-green-900 bg-green-50 hover:bg-green-100 px-3 py-1 rounded-md text-xs font-medium transition-colors">
+                                                    Edit
+                                                </a>
+                                            @endif
                                             <button onclick="openStatusModal({{ $user->id }}, '{{ $user->full_name }}', '{{ $user->status }}')" class="text-blue-600 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded-md text-xs font-medium transition-colors">
                                                 Change Status
                                             </button>

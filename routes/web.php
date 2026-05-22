@@ -230,20 +230,8 @@ Route::middleware([
         Route::post('/close', [App\Http\Controllers\DailyTillController::class, 'closeDay'])->name('close');
     });
     
-    // Organizations Management
-    Route::prefix('organizations')->name('organizations.')->group(function () {
-        Route::get('/', [App\Http\Controllers\OrganizationController::class, 'index'])->name('index');
-        Route::get('/profile', [App\Http\Controllers\OrganizationController::class, 'profile'])->name('profile');
-        Route::get('/{organization}/users', [App\Http\Controllers\OrganizationController::class, 'users'])->name('users');
-        Route::get('/{organization}/users/create', [App\Http\Controllers\OrganizationController::class, 'createUser'])->name('users.create');
-        Route::get('/{organization}/edit', [App\Http\Controllers\OrganizationController::class, 'edit'])->name('edit');
-        Route::match(['put', 'patch'], '/{organization}', [App\Http\Controllers\OrganizationController::class, 'update'])->name('update');
-        Route::patch('/{organization}/deactivate', [App\Http\Controllers\OrganizationController::class, 'deactivate'])->name('deactivate');
-        Route::patch('/{organization}/reactivate', [App\Http\Controllers\OrganizationController::class, 'reactivate'])->name('reactivate');
-    });
-
-    // Organization Settings (Self-Management)
-    Route::prefix('organization-settings')->name('organization-settings.')->group(function () {
+    // Organization settings (admin + super_admin)
+    Route::middleware(['org_admin'])->prefix('organization-settings')->name('organization-settings.')->group(function () {
         Route::get('/', [App\Http\Controllers\OrganizationSettingsController::class, 'index'])->name('index');
         Route::get('/details', [App\Http\Controllers\OrganizationSettingsController::class, 'details'])->name('details');
         Route::get('/users', [App\Http\Controllers\OrganizationSettingsController::class, 'users'])->name('users');
@@ -253,8 +241,7 @@ Route::middleware([
         Route::get('/users/{user}/edit', [App\Http\Controllers\OrganizationSettingsController::class, 'editUser'])->name('users.edit');
         Route::put('/users/{user}', [App\Http\Controllers\OrganizationSettingsController::class, 'updateUser'])->name('users.update');
         Route::get('/edit', [App\Http\Controllers\OrganizationSettingsController::class, 'edit'])->name('edit');
-        
-        // Real Account Mapping Routes
+
         Route::get('/real-accounts', [App\Http\Controllers\OrganizationSettingsController::class, 'realAccounts'])->name('real-accounts.index');
         Route::post('/real-accounts', [App\Http\Controllers\OrganizationSettingsController::class, 'storeRealAccount'])->name('real-accounts.store');
         Route::get('/real-accounts/{realAccount}', [App\Http\Controllers\OrganizationSettingsController::class, 'showRealAccount'])->name('real-accounts.show');
@@ -263,12 +250,38 @@ Route::middleware([
         Route::delete('/real-accounts/{realAccount}', [App\Http\Controllers\OrganizationSettingsController::class, 'destroyRealAccount'])->name('real-accounts.destroy');
     });
 
-    // Management (System Administration)
-    Route::prefix('management')->name('management.')->group(function () {
-        Route::get('/users', [App\Http\Controllers\ManagementController::class, 'users'])->name('users');
-        Route::get('/system-logs', [App\Http\Controllers\ManagementController::class, 'systemLogs'])->name('system-logs');
-        Route::post('/users/{user}/disable', [App\Http\Controllers\ManagementController::class, 'disableUser'])->name('users.disable');
-        Route::post('/users/{userId}/activate', [App\Http\Controllers\ManagementController::class, 'activateUser'])->name('users.activate');
+    // Platform administration (super_admin only)
+    Route::middleware(['super_admin'])->group(function () {
+        Route::prefix('organizations')->name('organizations.')->group(function () {
+            Route::get('/', [App\Http\Controllers\OrganizationController::class, 'index'])->name('index');
+            Route::get('/profile', [App\Http\Controllers\OrganizationController::class, 'profile'])->name('profile');
+            Route::get('/{organization}/users', [App\Http\Controllers\OrganizationController::class, 'users'])->name('users');
+            Route::get('/{organization}/users/create', [App\Http\Controllers\OrganizationController::class, 'createUser'])->name('users.create');
+            Route::get('/{organization}/edit', [App\Http\Controllers\OrganizationController::class, 'edit'])->name('edit');
+            Route::match(['put', 'patch'], '/{organization}', [App\Http\Controllers\OrganizationController::class, 'update'])->name('update');
+            Route::patch('/{organization}/deactivate', [App\Http\Controllers\OrganizationController::class, 'deactivate'])->name('deactivate');
+            Route::patch('/{organization}/reactivate', [App\Http\Controllers\OrganizationController::class, 'reactivate'])->name('reactivate');
+        });
+
+        Route::prefix('management')->name('management.')->group(function () {
+            Route::get('/users', [App\Http\Controllers\ManagementController::class, 'users'])->name('users');
+            Route::get('/system-logs', [App\Http\Controllers\ManagementController::class, 'systemLogs'])->name('system-logs');
+            Route::post('/users/{user}/disable', [App\Http\Controllers\ManagementController::class, 'disableUser'])->name('users.disable');
+            Route::post('/users/{userId}/activate', [App\Http\Controllers\ManagementController::class, 'activateUser'])->name('users.activate');
+        });
+
+        Route::prefix('super-admin')->name('super-admin.')->group(function () {
+            Route::get('/organizations', [App\Http\Controllers\SuperAdminController::class, 'index'])->name('organizations.index');
+            Route::get('/organizations/create', [App\Http\Controllers\SuperAdminController::class, 'create'])->name('organizations.create');
+            Route::post('/organizations', [App\Http\Controllers\SuperAdminController::class, 'store'])->name('organizations.store');
+            Route::get('/organizations/{organization}', [App\Http\Controllers\SuperAdminController::class, 'show'])->name('organizations.show');
+            Route::get('/organizations/{organization}/edit', [App\Http\Controllers\SuperAdminController::class, 'edit'])->name('organizations.edit');
+            Route::put('/organizations/{organization}', [App\Http\Controllers\SuperAdminController::class, 'update'])->name('organizations.update');
+            Route::patch('/organizations/{organization}/deactivate', [App\Http\Controllers\SuperAdminController::class, 'deactivate'])->name('organizations.deactivate');
+            Route::patch('/organizations/{organization}/reactivate', [App\Http\Controllers\SuperAdminController::class, 'reactivate'])->name('organizations.reactivate');
+            Route::get('/organizations/{organization}/statistics', [App\Http\Controllers\SuperAdminController::class, 'statistics'])->name('organizations.statistics');
+            Route::get('/organizations/{organization}/mapped-accounts', [App\Http\Controllers\SuperAdminController::class, 'organizationMappedAccounts'])->name('organizations.mapped-accounts');
+        });
     });
 });
 
@@ -304,21 +317,6 @@ Route::middleware(['auth:sanctum', 'verified'])->group(function () {
         Route::get('/crb', [App\Http\Controllers\CrbReportController::class, 'index'])->name('crb');
         Route::get('/crb/export', [App\Http\Controllers\CrbReportController::class, 'export'])->name('crb.export');
     });
-});
-
-// Super Admin Routes
-Route::prefix('super-admin')->name('super-admin.')->group(function () {
-    Route::get('/organizations', [App\Http\Controllers\SuperAdminController::class, 'index'])->name('organizations.index');
-    Route::get('/organizations/create', [App\Http\Controllers\SuperAdminController::class, 'create'])->name('organizations.create');
-    Route::post('/organizations', [App\Http\Controllers\SuperAdminController::class, 'store'])->name('organizations.store');
-    Route::get('/organizations/{organization}', [App\Http\Controllers\SuperAdminController::class, 'show'])->name('organizations.show');
-    Route::get('/organizations/{organization}/edit', [App\Http\Controllers\SuperAdminController::class, 'edit'])->name('organizations.edit');
-    Route::put('/organizations/{organization}', [App\Http\Controllers\SuperAdminController::class, 'update'])->name('organizations.update');
-    Route::patch('/organizations/{organization}/deactivate', [App\Http\Controllers\SuperAdminController::class, 'deactivate'])->name('organizations.deactivate');
-    Route::patch('/organizations/{organization}/reactivate', [App\Http\Controllers\SuperAdminController::class, 'reactivate'])->name('organizations.reactivate');
-    Route::get('/organizations/{organization}/statistics', [App\Http\Controllers\SuperAdminController::class, 'statistics'])->name('organizations.statistics');
-    
-    Route::get('/organizations/{organization}/mapped-accounts', [App\Http\Controllers\SuperAdminController::class, 'organizationMappedAccounts'])->name('organizations.mapped-accounts');
 });
 
 /// organization onboarding and registering 

@@ -80,7 +80,12 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     // Methods
-    public function isAdmin()
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === 'super_admin';
+    }
+
+    public function isAdmin(): bool
     {
         return in_array($this->role, ['super_admin', 'admin']);
     }
