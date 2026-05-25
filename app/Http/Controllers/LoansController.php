@@ -6,6 +6,7 @@ use App\Models\Loan;
 use App\Models\LoanTransaction;
 use App\Models\RepaymentRecord;
 use App\Models\Client;
+use App\Models\Collateral;
 use App\Models\LoanProduct;
 use App\Models\Branch;
 use App\Models\User;
@@ -154,8 +155,19 @@ class LoansController extends Controller
             ];
         }
 
+        $collateral = null;
+        if ($request->filled('collateral_id')) {
+            $collateral = Collateral::query()
+                ->where('organization_id', $userOrganizationId)
+                ->where('client_id', $clientModel->id)
+                ->where('status', 'available')
+                ->whereNull('loan_id')
+                ->where('id', $request->collateral_id)
+                ->first();
+        }
+
         return response()->json(
-            $scoringService->score($clientModel, $product, $requestedAmount, $loanTerms)
+            $scoringService->score($clientModel, $product, $requestedAmount, $loanTerms, $collateral)
         );
     }
 
@@ -185,6 +197,7 @@ class LoansController extends Controller
             'branch_id' => 'nullable|exists:branches,id',
             'loan_officer_id' => 'nullable|exists:users,id',
             'purpose' => 'nullable|string|max:500',
+            'collateral_id' => 'nullable|exists:collaterals,id',
             'collateral_description' => 'nullable|string|max:1000',
             'notes' => 'nullable|string|max:1000',
             'custom_mode' => 'nullable|in:0,1',
@@ -267,21 +280,56 @@ class LoansController extends Controller
         // Build metadata for custom loan details
         $metadata = [];
 
+        $pledgedCollateral = null;
+        if ($request->filled('collateral_id')) {
+            $pledgedCollateral = Collateral::query()
+                ->where('organization_id', $userOrganizationId)
+                ->where('client_id', $client->id)
+                ->where('status', 'available')
+                ->whereNull('loan_id')
+                ->where('id', $request->collateral_id)
+                ->first();
+
+            if (!$pledgedCollateral) {
+                return redirect()->back()
+                    ->withErrors(['collateral_id' => 'Selected collateral is not available for this client.'])
+                    ->withInput();
+            }
+        }
+
+        $loanTermsForScore = [
+            'tenure_months' => (float) ($request->loan_tenure_months ?? $loanProduct->min_tenure_months),
+            'interest_rate' => (float) ($request->interest_rate ?? $loanProduct->interest_rate),
+            'repayment_frequency' => $request->input('repayment_frequency', $loanProduct->repayment_frequency ?? 'monthly'),
+            'interest_calculation_method' => $request->input('interest_calculation_method', $loanProduct->interest_calculation_method ?? 'flat'),
+        ];
+
         $scoring = app(ClientScoringService::class)->score(
             $client,
             $loanProduct,
-            (float) $request->loan_amount
+            (float) $request->loan_amount,
+            $loanTermsForScore,
+            $pledgedCollateral
         );
 
-        if (!$scoring['passes']) {
-            $failedCheck = collect($scoring['eligibility']['checks'])->first(fn ($check) => !$check['passed']);
-
-            return redirect()->back()
-                ->withErrors(['client_id' => $failedCheck['message'] ?? 'Client does not meet eligibility requirements for this loan.'])
-                ->withInput();
-        }
-
         $metadata['client_scoring'] = $scoring;
+
+        $requiresCollateral = false;
+        $collateralDescription = $request->collateral_description;
+        $collateralValue = null;
+        $collateralLocation = $request->collateral_location ?? null;
+
+        if ($pledgedCollateral) {
+            $requiresCollateral = true;
+            $collateralDescription = $pledgedCollateral->title . ($pledgedCollateral->description ? ' — ' . $pledgedCollateral->description : '');
+            $collateralValue = $pledgedCollateral->estimated_value;
+            $collateralLocation = $pledgedCollateral->location;
+            $metadata['collateral_id'] = $pledgedCollateral->id;
+        } elseif ($request->boolean('requires_collateral')) {
+            $requiresCollateral = true;
+            $collateralValue = $request->collateral_value;
+            $collateralLocation = $request->collateral_location;
+        }
         
         if ($isCustomMode) {
             $metadata['custom_mode'] = true;
@@ -332,12 +380,19 @@ class LoansController extends Controller
             'other_fees' => $customChargeAmount,
             'application_date' => now()->toDateString(),
             'purpose' => $request->purpose,
-            'collateral_description' => $request->collateral_description,
+            'requires_collateral' => $requiresCollateral,
+            'collateral_description' => $collateralDescription,
+            'collateral_value' => $collateralValue,
+            'collateral_location' => $collateralLocation,
             'status' => 'pending',
             'approval_status' => 'pending',
             'notes' => $request->notes,
             'metadata' => !empty($metadata) ? $metadata : null,
         ]);
+
+        if ($pledgedCollateral) {
+            $pledgedCollateral->pledgeToLoan($loan);
+        }
 
         return redirect()->route('loans.show', $loan)
             ->with('success', 'Loan application created successfully.');
@@ -665,6 +720,11 @@ class LoansController extends Controller
     {
         $request->validate([
             'assessment_notes' => 'nullable|string|max:2000',
+            'collateral_option' => 'nullable|in:none,registered,manual',
+            'collateral_id' => 'nullable|exists:collaterals,id',
+            'collateral_description' => 'nullable|string|max:1000',
+            'collateral_value' => 'nullable|numeric|min:0',
+            'collateral_location' => 'nullable|string|max:255',
         ]);
 
         // Check if user has permission
@@ -676,19 +736,79 @@ class LoansController extends Controller
             return redirect()->back()->with('error', 'Only loans under review can have their assessment completed.');
         }
 
-        // Update loan status to assessed
         $metadata = is_array($loan->metadata) ? $loan->metadata : [];
+        $collateralOption = $request->input('collateral_option', 'none');
+        $alreadyHasCollateral = $loan->pledgedCollateral !== null;
+        $pledgedCollateral = null;
+
+        if (!$alreadyHasCollateral && $collateralOption === 'registered' && $request->filled('collateral_id')) {
+            $pledgedCollateral = Collateral::query()
+                ->where('organization_id', $loan->organization_id)
+                ->where('client_id', $loan->client_id)
+                ->where('status', 'available')
+                ->whereNull('loan_id')
+                ->where('id', $request->collateral_id)
+                ->first();
+
+            if (!$pledgedCollateral) {
+                return redirect()->back()
+                    ->withErrors(['collateral_id' => 'Selected collateral is not available for this client.'])
+                    ->withInput();
+            }
+        }
+
+        $loanUpdates = [
+            'status' => 'assessed',
+        ];
+
+        if (!$alreadyHasCollateral) {
+            if ($pledgedCollateral) {
+                $loanUpdates['requires_collateral'] = true;
+                $loanUpdates['collateral_description'] = $pledgedCollateral->title
+                    . ($pledgedCollateral->description ? ' — ' . $pledgedCollateral->description : '');
+                $loanUpdates['collateral_value'] = $pledgedCollateral->estimated_value;
+                $loanUpdates['collateral_location'] = $pledgedCollateral->location;
+                $metadata['collateral_id'] = $pledgedCollateral->id;
+            } elseif ($collateralOption === 'manual') {
+                $loanUpdates['requires_collateral'] = true;
+                $loanUpdates['collateral_description'] = $request->collateral_description;
+                $loanUpdates['collateral_value'] = $request->collateral_value;
+                $loanUpdates['collateral_location'] = $request->collateral_location;
+            }
+        }
+
+        $loanTermsForScore = [
+            'tenure_months' => (float) $loan->loan_tenure_months,
+            'interest_rate' => (float) $loan->interest_rate,
+            'repayment_frequency' => $loan->repayment_frequency ?? 'monthly',
+            'interest_calculation_method' => $loan->interest_calculation_method ?? 'flat',
+        ];
+
+        $collateralForScore = $pledgedCollateral ?? $loan->pledgedCollateral;
+        $scoring = app(ClientScoringService::class)->score(
+            $loan->client,
+            $loan->loanProduct,
+            (float) $loan->loan_amount,
+            $loanTermsForScore,
+            $collateralForScore
+        );
+        $metadata['client_scoring'] = $scoring;
+
         $metadata['assessment'] = [
             'completed_by' => auth()->id(),
             'completed_by_name' => auth()->user()->name,
             'completed_at' => now()->toDateTimeString(),
             'notes' => $request->assessment_notes,
+            'collateral_option' => $collateralOption,
+            'collateral_id' => $pledgedCollateral?->id ?? $loan->pledgedCollateral?->id,
         ];
 
-        $loan->update([
-            'status' => 'assessed',
-            'metadata' => $metadata,
-        ]);
+        $loanUpdates['metadata'] = $metadata;
+        $loan->update($loanUpdates);
+
+        if ($pledgedCollateral && !$alreadyHasCollateral) {
+            $pledgedCollateral->pledgeToLoan($loan->fresh());
+        }
 
         // Add assessment comment
         $comments = is_array($loan->comments) ? $loan->comments : [];
@@ -729,7 +849,8 @@ class LoansController extends Controller
             'transactions',
             'approvedBy',
             'rejectedBy',
-            'returnedBy'
+            'returnedBy',
+            'pledgedCollateral.creator',
         ]);
         
         // Calculate total interest percentage
@@ -832,7 +953,15 @@ class LoansController extends Controller
             'total_installments' => $previewSchedule ? count($previewSchedule) : $loan->schedules->count(),
         ];
 
-        return view('loans.show', compact('loan', 'totalInterestPercentage', 'previewSchedule', 'scheduleAdjustment'));
+        $availableCollaterals = Collateral::query()
+            ->where('organization_id', $loan->organization_id)
+            ->where('client_id', $loan->client_id)
+            ->where('status', 'available')
+            ->whereNull('loan_id')
+            ->orderBy('title')
+            ->get();
+
+        return view('loans.show', compact('loan', 'totalInterestPercentage', 'previewSchedule', 'scheduleAdjustment', 'availableCollaterals'));
     }
     
     /**

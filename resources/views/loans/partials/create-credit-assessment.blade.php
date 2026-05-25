@@ -2,7 +2,54 @@
 <div class="wizard-step hidden" data-step="2">
     <div class="bg-white rounded-lg border border-gray-200 p-6">
         <h3 class="text-lg font-semibold text-gray-900 mb-1">Credit Assessment</h3>
-        <p class="text-sm text-gray-500 mb-6">System score based on client profile, requested amount, and historical loan performance.</p>
+        <p class="text-sm text-gray-500 mb-6">Advisory score based on client profile, loan terms, and history. You can continue even if warnings appear.</p>
+
+        {{-- Collateral attachment (single-use, boosts limit) --}}
+        <div class="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-3">
+                <div>
+                    <h4 class="text-sm font-semibold text-gray-900">Attach Collateral (optional)</h4>
+                    <p class="text-xs text-gray-500 mt-1">Select a registered asset for this client. Each item can be pledged once to boost eligibility and the recommended loan amount.</p>
+                </div>
+                <a href="{{ route('collaterals.create') }}" target="_blank" rel="noopener"
+                   class="text-sm text-green-700 hover:text-green-800 font-medium whitespace-nowrap">
+                    + Register new
+                </a>
+            </div>
+            <select name="collateral_id" id="collateral_id"
+                    class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+                <option value="">No collateral</option>
+            </select>
+            @error('collateral_id')
+                <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+            @enderror
+            <div id="collateral_preview" class="hidden mt-3 p-3 rounded-lg border border-green-200 bg-green-50 text-sm">
+                <p class="font-semibold text-green-900" id="collateral_preview_title">—</p>
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-2 mt-2 text-xs text-green-800">
+                    <div><span class="text-green-600">Value:</span> <span id="collateral_preview_value">—</span></div>
+                    <div><span class="text-green-600">Lending capacity:</span> <span id="collateral_preview_capacity">—</span></div>
+                    <div><span class="text-green-600">Reference:</span> <span id="collateral_preview_ref">—</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="collateral_boost_panel" class="hidden mb-6 rounded-lg border border-green-200 bg-green-50 p-4">
+            <h4 class="text-sm font-semibold text-green-900 mb-2">Collateral Boost Applied</h4>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                <div>
+                    <p class="text-green-700 text-xs">Base recommended max</p>
+                    <p class="font-semibold text-gray-900" id="score_base_max">—</p>
+                </div>
+                <div>
+                    <p class="text-green-700 text-xs">Collateral boost</p>
+                    <p class="font-semibold text-green-800" id="score_collateral_boost">—</p>
+                </div>
+                <div>
+                    <p class="text-green-700 text-xs">Effective max</p>
+                    <p class="font-semibold text-green-900" id="score_effective_max">—</p>
+                </div>
+            </div>
+        </div>
 
         <div id="score_loading" class="hidden text-center py-12">
             <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>

@@ -1,4 +1,27 @@
 <x-app-shell title="Loan Details - {{ $loan->loan_number }}" header="Loan Details">
+    @php
+        $loanShowTabs = [
+            1 => 'Application',
+            2 => 'Review & Assessment',
+            3 => 'Assessment & Approval',
+            4 => 'Schedule & Activity',
+        ];
+        $loanShowDefaultTab = match ($loan->status) {
+            'pending' => 1,
+            'under_review' => 2,
+            'assessed' => 3,
+            'active', 'overdue', 'approved', 'disbursed' => 4,
+            'completed' => 4,
+            'rejected' => 1,
+            default => 1,
+        };
+        $loanShowTabHints = [
+            1 => 'Loan terms and client profile',
+            2 => 'Collateral, documents, and schedule adjustments',
+            3 => 'Workflow progress, notes, and approval readiness',
+            4 => 'Repayment schedule and transaction history',
+        ];
+    @endphp
     <div class="py-6">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <!-- Header Section -->
@@ -101,35 +124,14 @@
                         @endif
                     </div>
                     
-                    {{-- Workflow Status Banner --}}
-                    @if($loan->status === 'pending')
-                        <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center space-x-3">
-                            <svg class="w-5 h-5 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                            <p class="text-sm text-yellow-800"><strong>Pending:</strong> Click "Start Review" to begin the loan assessment process.</p>
-                        </div>
-                    @elseif($loan->status === 'under_review')
-                        <div class="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center space-x-3">
-                            <svg class="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
-                            </svg>
-                            <p class="text-sm text-blue-800"><strong>Under Review:</strong> Upload documents, verify information, and perform assessment. Click "Assessment Completed" when done.</p>
-                        </div>
-                    @elseif($loan->status === 'assessed')
-                        <div class="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg flex items-center space-x-3">
-                            <svg class="w-5 h-5 text-indigo-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                            </svg>
-                            <p class="text-sm text-indigo-800"><strong>Assessment Complete:</strong> Loan is ready for approval. An authorized user can now approve and activate this loan.</p>
-                        </div>
-                    @endif
+                    @include('loans.partials.show-tabs-nav')
                 </div>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <!-- Main Content -->
                 <div class="lg:col-span-2 space-y-6">
+                    <div class="loan-show-tab-panel space-y-6" id="loan-tab-panel-1" data-loan-tab="1" role="tabpanel">
                     <!-- Loan Information -->
                     <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                         <div class="p-6">
@@ -194,6 +196,152 @@
                                     <p class="mt-1 text-sm text-gray-900">{{ $loan->formatted_monthly_payment }}</p>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Client Information -->
+                    <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
+                        <div class="p-6">
+                            <h2 class="text-lg font-semibold text-gray-900 mb-4">Client Information</h2>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Client Name</label>
+                                    <p class="mt-1 text-sm text-gray-900">{{ $loan->client->display_name ?? 'N/A' }}</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Client Number</label>
+                                    <p class="mt-1 text-sm text-gray-900">{{ $loan->client->client_number ?? 'N/A' }}</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Phone</label>
+                                    <p class="mt-1 text-sm text-gray-900">{{ $loan->client->phone ?? 'N/A' }}</p>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700">Email</label>
+                                    <p class="mt-1 text-sm text-gray-900">{{ $loan->client->email ?? 'N/A' }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    @php
+                        $clientScoring = is_array($loan->metadata) ? ($loan->metadata['client_scoring'] ?? null) : null;
+                    @endphp
+                    @if($clientScoring)
+                    <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg border-l-4 border-indigo-400">
+                        <div class="p-6">
+                            <h2 class="text-lg font-semibold text-gray-900 mb-4">Credit Assessment</h2>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                <div class="p-3 bg-gray-50 rounded-lg">
+                                    <p class="text-xs text-gray-500">Score</p>
+                                    <p class="text-xl font-bold text-gray-900">{{ $clientScoring['score'] ?? '—' }}/100</p>
+                                </div>
+                                <div class="p-3 bg-gray-50 rounded-lg">
+                                    <p class="text-xs text-gray-500">Band</p>
+                                    <p class="font-semibold text-gray-900">{{ $clientScoring['band_label'] ?? '—' }}</p>
+                                </div>
+                                <div class="p-3 bg-green-50 rounded-lg">
+                                    <p class="text-xs text-green-700">Recommended max</p>
+                                    <p class="font-semibold text-green-800">TZS {{ isset($clientScoring['recommended_max_loan']) ? number_format($clientScoring['recommended_max_loan'], 2) : '—' }}</p>
+                                </div>
+                                <div class="p-3 bg-gray-50 rounded-lg">
+                                    <p class="text-xs text-gray-500">Requested</p>
+                                    <p class="font-semibold text-gray-900">TZS {{ number_format($loan->loan_amount, 2) }}</p>
+                                </div>
+                            </div>
+                            @if(!empty($clientScoring['collateral_boost']))
+                                <p class="mt-3 text-sm text-green-700">Includes TZS {{ number_format($clientScoring['collateral_boost'], 2) }} collateral boost.</p>
+                            @endif
+                        </div>
+                    </div>
+                    @endif
+                    </div>
+
+                    <div class="loan-show-tab-panel hidden space-y-6" id="loan-tab-panel-2" data-loan-tab="2" role="tabpanel">
+                    <!-- Collateral -->
+                    <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg border-l-4 {{ $loan->pledgedCollateral || $loan->requires_collateral ? 'border-green-500' : 'border-gray-300' }}">
+                        <div class="p-6">
+                            <div class="flex items-center justify-between mb-4">
+                                <div>
+                                    <h2 class="text-lg font-semibold text-gray-900">Collateral</h2>
+                                    <p class="text-sm text-gray-500 mt-1">Optional — attach a registered asset to boost eligibility, or record manual details during assessment.</p>
+                                </div>
+                                @if($loan->pledgedCollateral)
+                                    <span class="px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">Pledged</span>
+                                @elseif($loan->requires_collateral)
+                                    <span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">On file</span>
+                                @else
+                                    <span class="px-3 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-600">None</span>
+                                @endif
+                            </div>
+
+                            @if($loan->pledgedCollateral)
+                                @php $col = $loan->pledgedCollateral; @endphp
+                                <div class="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm space-y-2">
+                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                        <p class="font-semibold text-blue-900">{{ $col->title }}</p>
+                                        <span class="text-xs font-mono text-blue-700">{{ $col->reference_number }}</span>
+                                    </div>
+                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-blue-800">
+                                        <div><span class="text-blue-600">Type:</span> {{ $col->typeLabel() }}</div>
+                                        <div><span class="text-blue-600">Value:</span> TZS {{ number_format($col->estimated_value, 2) }}</div>
+                                        <div><span class="text-blue-600">Boost capacity:</span> TZS {{ number_format($col->lendingCapacity(), 2) }}</div>
+                                    </div>
+                                    @if($col->location)
+                                        <div class="text-blue-800"><span class="text-blue-600">Location:</span> {{ $col->location }}</div>
+                                    @endif
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-blue-200 text-blue-800">
+                                        <div>
+                                            <span class="text-blue-600">Registered by:</span>
+                                            <span class="font-medium">{{ $col->creator?->name ?? 'Unknown' }}</span>
+                                        </div>
+                                        <div>
+                                            <span class="text-blue-600">Registered on:</span>
+                                            {{ $col->created_at?->format('d M Y H:i') ?? '—' }}
+                                        </div>
+                                        @if($col->pledged_at)
+                                            <div>
+                                                <span class="text-blue-600">Attached on:</span>
+                                                {{ $col->pledged_at->format('d M Y H:i') }}
+                                            </div>
+                                        @endif
+                                    </div>
+                                    <a href="{{ route('collaterals.show', $col) }}" class="inline-block text-sm text-blue-700 hover:underline">View collateral record</a>
+                                </div>
+                            @elseif($loan->requires_collateral)
+                                <div class="rounded-lg border border-green-200 bg-green-50 p-4 text-sm space-y-2">
+                                    @if($loan->collateral_description)
+                                        <p class="text-green-900">{{ $loan->collateral_description }}</p>
+                                    @endif
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-green-800">
+                                        @if($loan->collateral_value)
+                                            <div><span class="text-green-600">Value:</span> TZS {{ number_format($loan->collateral_value, 2) }}</div>
+                                        @endif
+                                        @if($loan->collateral_location)
+                                            <div><span class="text-green-600">Location:</span> {{ $loan->collateral_location }}</div>
+                                        @endif
+                                    </div>
+                                </div>
+                            @elseif($loan->status === 'under_review')
+                                <div class="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-600">
+                                    <p>No collateral attached yet. When you complete the assessment, you can choose to:</p>
+                                    <ul class="list-disc list-inside mt-2 space-y-1">
+                                        <li>Skip collateral (no boost)</li>
+                                        <li>Attach a registered item from the client&apos;s portfolio</li>
+                                        <li>Enter manual collateral details</li>
+                                    </ul>
+                                    @if($availableCollaterals->isNotEmpty())
+                                        <p class="mt-3 text-green-700 font-medium">{{ $availableCollaterals->count() }} registered item(s) available for this client.</p>
+                                    @endif
+                                    <p class="mt-3">
+                                        <a href="{{ route('collaterals.create') }}?client_id={{ $loan->client_id }}&loan_id={{ $loan->loan_number }}" class="inline-flex items-center text-green-700 hover:underline font-medium">
+                                            Register and attach collateral to this loan
+                                        </a>
+                                    </p>
+                                </div>
+                            @else
+                                <p class="text-sm text-gray-500">No collateral recorded for this loan.</p>
+                            @endif
                         </div>
                     </div>
 
@@ -285,173 +433,6 @@
                     </div>
                     @endif
 
-                    <!-- Client Information -->
-                    <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                        <div class="p-6">
-                            <h2 class="text-lg font-semibold text-gray-900 mb-4">Client Information</h2>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700">Client Name</label>
-                                    <p class="mt-1 text-sm text-gray-900">{{ $loan->client->display_name ?? 'N/A' }}</p>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700">Client Number</label>
-                                    <p class="mt-1 text-sm text-gray-900">{{ $loan->client->client_number ?? 'N/A' }}</p>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700">Phone</label>
-                                    <p class="mt-1 text-sm text-gray-900">{{ $loan->client->phone ?? 'N/A' }}</p>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700">Email</label>
-                                    <p class="mt-1 text-sm text-gray-900">{{ $loan->client->email ?? 'N/A' }}</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Loan Schedule -->
-                    @if($loan->schedules->count() > 0 || ($previewSchedule && count($previewSchedule) > 0))
-                    @if($loan->schedules->count() > 0)
-                    <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                        <div class="p-6">
-                            <h2 class="text-lg font-semibold text-gray-900 mb-4">Payment Schedule</h2>
-                            @if(($loan->overdue_days ?? 0) > 0)
-                                <p class="mb-4 text-sm text-red-700">
-                                    Total arrears days: <span class="font-semibold">{{ $loan->overdue_days }}</span>
-                                    @if(($loan->overdue_amount ?? 0) > 0)
-                                        &middot; Overdue amount: <span class="font-semibold">TZS {{ number_format($loan->overdue_amount, 2) }}</span>
-                                    @endif
-                                </p>
-                            @endif
-                            <div class="overflow-x-auto">
-                                <table class="min-w-full divide-y divide-gray-200">
-                                    <thead class="bg-gray-50">
-                                        <tr>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Installment</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Principal</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Interest</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid (P / I)</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Outstanding</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Arrears Days</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="bg-white divide-y divide-gray-200">
-                                        @foreach($loan->schedules as $schedule)
-                                        @php
-                                            $statusColors = [
-                                                'paid' => 'bg-green-100 text-green-800',
-                                                'partial' => 'bg-orange-100 text-orange-800',
-                                                'overdue' => 'bg-red-100 text-red-800',
-                                                'pending' => 'bg-yellow-100 text-yellow-800',
-                                            ];
-                                        @endphp
-                                        <tr>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $schedule->installment_number }}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $schedule->due_date->format('M d, Y') }}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">TZS {{ number_format($schedule->principal_amount, 2) }}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">TZS {{ number_format($schedule->interest_amount, 2) }}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">TZS {{ number_format($schedule->total_amount, 2) }}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                                TZS {{ number_format($schedule->paid_principal_amount ?? 0, 2) }} / {{ number_format($schedule->paid_interest_amount ?? 0, 2) }}
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">TZS {{ number_format($schedule->remaining_total, 2) }}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                                @if(($schedule->days_overdue ?? 0) > 0)
-                                                    <span class="text-red-600 font-medium">{{ $schedule->days_overdue }}</span>
-                                                @else
-                                                    0
-                                                @endif
-                                            </td>
-                                            <td class="px-6 py-4 whitespace-nowrap">
-                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $statusColors[$schedule->status] ?? 'bg-gray-100 text-gray-800' }}">
-                                                    {{ ucfirst($schedule->status) }}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                        @endforeach
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                    @endif
-                    @if($previewSchedule && count($previewSchedule) > 0)
-                    <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                        <div class="p-6">
-                            <div class="flex items-center justify-between mb-4">
-                                <h2 class="text-lg font-semibold text-gray-900">Payment Schedule (Preview)</h2>
-                                <span class="px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">
-                                    Not Saved to Database
-                                </span>
-                            </div>
-                            <div class="overflow-x-auto">
-                                <table class="min-w-full divide-y divide-gray-200">
-                                    <thead class="bg-gray-50">
-                                        <tr>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Installment</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Principal</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Interest</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="bg-white divide-y divide-gray-200">
-                                        @foreach($previewSchedule as $schedule)
-                                        <tr>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $schedule['installment_number'] }}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $schedule['due_date']->format('M d, Y') }}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">TZS {{ number_format($schedule['principal_amount'], 2) }}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">TZS {{ number_format($schedule['interest_amount'], 2) }}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">TZS {{ number_format($schedule['total_amount'], 2) }}</td>
-                                        </tr>
-                                        @endforeach
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                    @endif
-                    @endif
-
-                    <!-- Recent Transactions -->
-                    @if($loan->transactions->count() > 0)
-                    <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                        <div class="p-6">
-                            <h2 class="text-lg font-semibold text-gray-900 mb-4">Recent Transactions</h2>
-                            <div class="overflow-x-auto">
-                                <table class="min-w-full divide-y divide-gray-200">
-                                    <thead class="bg-gray-50">
-                                        <tr>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="bg-white divide-y divide-gray-200">
-                                        @foreach($loan->transactions->take(10) as $transaction)
-                                        <tr>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ $transaction->transaction_date->format('M d, Y') }}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ ucfirst(str_replace('_', ' ', $transaction->transaction_type)) }}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">TZS {{ number_format($transaction->amount, 2) }}</td>
-                                            <td class="px-6 py-4 whitespace-nowrap">
-                                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $transaction->status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800' }}">
-                                                    {{ ucfirst($transaction->status) }}
-                                                </span>
-                                            </td>
-                                        </tr>
-                                        @endforeach
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                    @endif
-
                     <!-- Documents Section -->
                     <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                         <div class="p-6">
@@ -498,7 +479,9 @@
                             @endif
                         </div>
                     </div>
+                    </div>
 
+                    <div class="loan-show-tab-panel hidden space-y-6" id="loan-tab-panel-3" data-loan-tab="3" role="tabpanel">
                     <!-- Comments Section -->
                     <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                         <div class="p-6">
@@ -813,6 +796,11 @@
                             </div>
                             @endif
                         </div>
+                    </div>
+                    </div>
+
+                    <div class="loan-show-tab-panel hidden space-y-6" id="loan-tab-panel-4" data-loan-tab="4" role="tabpanel">
+                        @include('loans.partials.show-schedule-activity')
                     </div>
                 </div>
 
@@ -1139,7 +1127,7 @@
 
     <!-- Assessment Complete Modal -->
     <div id="assessmentModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
-        <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+        <div class="relative top-10 mx-auto p-5 border w-full max-w-lg shadow-lg rounded-md bg-white mb-10">
             <div class="mt-3">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="text-lg font-medium text-gray-900">Complete Assessment</h3>
@@ -1155,6 +1143,69 @@
                         By completing the assessment, you confirm that all documents have been verified and the loan is ready for approval.
                     </p>
                 </div>
+
+                @if($loan->pledgedCollateral)
+                    <div class="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+                        <p class="font-medium text-blue-900">Collateral already pledged</p>
+                        <p class="text-blue-800 mt-1">{{ $loan->pledgedCollateral->title }} ({{ $loan->pledgedCollateral->reference_number }})</p>
+                    </div>
+                @else
+                    {{-- Collateral options (optional for now) --}}
+                    <div class="mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50">
+                        <div class="flex items-center justify-between mb-3">
+                            <p class="text-sm font-medium text-gray-900">Collateral (optional)</p>
+                            <a href="{{ route('collaterals.create') }}?client_id={{ $loan->client_id }}&loan_id={{ $loan->loan_number }}" target="_blank" rel="noopener" class="text-xs text-green-700 hover:underline">+ Register new</a>
+                        </div>
+                        <div class="space-y-2">
+                            <label class="flex items-start space-x-2 cursor-pointer">
+                                <input type="radio" name="collateral_option" value="none" class="mt-1 text-indigo-600 focus:ring-indigo-500" checked onchange="toggleAssessmentCollateral()">
+                                <span class="text-sm text-gray-700"><strong>No collateral</strong> — proceed without attaching an asset</span>
+                            </label>
+                            <label class="flex items-start space-x-2 cursor-pointer {{ $availableCollaterals->isEmpty() ? 'opacity-50' : '' }}">
+                                <input type="radio" name="collateral_option" value="registered" class="mt-1 text-indigo-600 focus:ring-indigo-500" onchange="toggleAssessmentCollateral()" {{ $availableCollaterals->isEmpty() ? 'disabled' : '' }}>
+                                <span class="text-sm text-gray-700">
+                                    <strong>Registered collateral</strong> — attach from client portfolio (single use, boosts limit)
+                                    @if($availableCollaterals->isEmpty())
+                                        <span class="block text-xs text-gray-500 mt-0.5">No available items — register one first</span>
+                                    @endif
+                                </span>
+                            </label>
+                            <label class="flex items-start space-x-2 cursor-pointer">
+                                <input type="radio" name="collateral_option" value="manual" class="mt-1 text-indigo-600 focus:ring-indigo-500" onchange="toggleAssessmentCollateral()">
+                                <span class="text-sm text-gray-700"><strong>Manual entry</strong> — describe collateral without registering</span>
+                            </label>
+                        </div>
+
+                        <div id="assessment_collateral_registered" class="hidden mt-3">
+                            <label for="assessment_collateral_id" class="block text-xs font-medium text-gray-600 mb-1">Select collateral</label>
+                            <select name="collateral_id" id="assessment_collateral_id" form="assessmentForm" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="">Choose an item...</option>
+                                @foreach($availableCollaterals as $col)
+                                    <option value="{{ $col->id }}" data-capacity="{{ $col->lendingCapacity() }}">
+                                        {{ $col->title }} ({{ $col->reference_number }}) — TZS {{ number_format($col->estimated_value, 2) }} · boost TZS {{ number_format($col->lendingCapacity(), 2) }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div id="assessment_collateral_manual" class="hidden mt-3 space-y-3">
+                            <div>
+                                <label for="assessment_collateral_description" class="block text-xs font-medium text-gray-600 mb-1">Description</label>
+                                <textarea name="collateral_description" id="assessment_collateral_description" form="assessmentForm" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Describe the collateral..."></textarea>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label for="assessment_collateral_value" class="block text-xs font-medium text-gray-600 mb-1">Value (TZS)</label>
+                                    <input type="number" name="collateral_value" id="assessment_collateral_value" form="assessmentForm" step="0.01" min="0" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="0.00">
+                                </div>
+                                <div>
+                                    <label for="assessment_collateral_location" class="block text-xs font-medium text-gray-600 mb-1">Location</label>
+                                    <input type="text" name="collateral_location" id="assessment_collateral_location" form="assessmentForm" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Location">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                @endif
                 
                 <!-- Assessment Checklist -->
                 <div class="mb-4 space-y-2">
@@ -1173,12 +1224,13 @@
                     </label>
                     <label class="flex items-center space-x-2">
                         <input type="checkbox" id="check_collateral" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" onchange="updateAssessmentSubmit()">
-                        <span class="text-sm text-gray-700">Collateral/guarantor verified (if applicable)</span>
+                        <span class="text-sm text-gray-700">Collateral verified or confirmed not required</span>
                     </label>
                 </div>
                 
-                <form action="{{ route('loans.complete-assessment', $loan) }}" method="POST">
+                <form id="assessmentForm" action="{{ route('loans.complete-assessment', $loan) }}" method="POST">
                     @csrf
+                    <input type="hidden" name="collateral_option" id="assessment_collateral_option" value="none">
                     <div class="space-y-4">
                         <div>
                             <label for="assessment_notes" class="block text-sm font-medium text-gray-700 mb-1">Assessment Notes</label>
@@ -1386,8 +1438,33 @@
             document.getElementById('assessmentModal').classList.add('hidden');
             document.getElementById('assessment_notes').value = '';
             document.querySelectorAll('#assessmentModal input[type="checkbox"]').forEach(cb => cb.checked = false);
+            const noneRadio = document.querySelector('#assessmentModal input[name="collateral_option"][value="none"]');
+            if (noneRadio) noneRadio.checked = true;
+            toggleAssessmentCollateral();
             updateAssessmentSubmit();
         }
+
+        function toggleAssessmentCollateral() {
+            const selected = document.querySelector('#assessmentModal input[name="collateral_option"]:checked');
+            const option = selected ? selected.value : 'none';
+            const hidden = document.getElementById('assessment_collateral_option');
+            if (hidden) hidden.value = option;
+
+            const registered = document.getElementById('assessment_collateral_registered');
+            const manual = document.getElementById('assessment_collateral_manual');
+            if (registered) registered.classList.toggle('hidden', option !== 'registered');
+            if (manual) manual.classList.toggle('hidden', option !== 'manual');
+        }
+
+        function syncAssessmentCollateralOption() {
+            const selected = document.querySelector('#assessmentModal input[name="collateral_option"]:checked');
+            const hidden = document.getElementById('assessment_collateral_option');
+            if (selected && hidden) hidden.value = selected.value;
+        }
+
+        document.getElementById('assessmentForm')?.addEventListener('submit', function() {
+            syncAssessmentCollateralOption();
+        });
 
         function updateAssessmentSubmit() {
             const checks = document.querySelectorAll('#assessmentModal input[type="checkbox"]');
@@ -1494,5 +1571,41 @@
                 }
             });
         }
+
+        // Loan show tabs
+        (function() {
+            const tabHints = @json($loanShowTabHints);
+            const nav = document.querySelector('[data-default-tab]');
+            let currentTab = nav ? parseInt(nav.dataset.defaultTab, 10) || 1 : 1;
+
+            const activeTabClasses = ['border-green-600', 'text-green-700'];
+            const inactiveTabClasses = ['border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:border-gray-300'];
+
+            function updateLoanShowTab(tab) {
+                currentTab = tab;
+
+                document.querySelectorAll('.loan-show-tab-panel').forEach(el => {
+                    el.classList.toggle('hidden', parseInt(el.dataset.loanTab, 10) !== tab);
+                });
+
+                document.querySelectorAll('[data-loan-tab-btn]').forEach(btn => {
+                    const isActive = parseInt(btn.dataset.loanTabBtn, 10) === tab;
+                    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                    btn.classList.remove(...activeTabClasses, ...inactiveTabClasses);
+                    btn.classList.add(...(isActive ? activeTabClasses : inactiveTabClasses));
+                });
+
+                const hint = document.getElementById('loan_show_tab_hint');
+                if (hint && tabHints[tab]) hint.textContent = tabHints[tab];
+            }
+
+            document.querySelectorAll('[data-loan-tab-btn]').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    updateLoanShowTab(parseInt(this.dataset.loanTabBtn, 10));
+                });
+            });
+
+            updateLoanShowTab(currentTab);
+        })();
     </script>
 </x-app-shell>

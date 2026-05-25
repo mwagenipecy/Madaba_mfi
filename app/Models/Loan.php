@@ -130,6 +130,11 @@ class Loan extends Model
         return $this->belongsTo(Client::class);
     }
 
+    public function pledgedCollateral(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Collateral::class);
+    }
+
     public function loanProduct(): BelongsTo
     {
         return $this->belongsTo(LoanProduct::class);

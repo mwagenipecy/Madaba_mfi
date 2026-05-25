@@ -121,6 +121,18 @@ class Client extends Model
         return $this->hasMany(Loan::class);
     }
 
+    public function collaterals(): HasMany
+    {
+        return $this->hasMany(Collateral::class);
+    }
+
+    public function availableCollaterals(): HasMany
+    {
+        return $this->collaterals()
+            ->where('status', 'available')
+            ->whereNull('loan_id');
+    }
+
     // Scopes
     public function scopeActive($query)
     {

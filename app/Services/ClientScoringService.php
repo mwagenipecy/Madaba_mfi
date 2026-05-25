@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Client;
+use App\Models\Collateral;
 use App\Models\Loan;
 use App\Models\LoanProduct;
 use App\Models\LoanSchedule;
@@ -44,11 +45,12 @@ class ClientScoringService
         Client $client,
         ?LoanProduct $product = null,
         ?float $requestedAmount = null,
-        ?array $loanTerms = null
+        ?array $loanTerms = null,
+        ?Collateral $collateral = null
     ): array {
         $loans = $client->loans()->get();
 
-        return $this->computeScore($client, $loans, $product, $requestedAmount, $loanTerms);
+        return $this->computeScore($client, $loans, $product, $requestedAmount, $loanTerms, $collateral);
     }
 
     /**
@@ -59,7 +61,8 @@ class ClientScoringService
         Collection $loans,
         ?LoanProduct $product = null,
         ?float $requestedAmount = null,
-        ?array $loanTerms = null
+        ?array $loanTerms = null,
+        ?Collateral $collateral = null
     ): array {
         $history = $this->analyzeLoanHistory($loans);
         $profile = $this->analyzeProfile($client);
@@ -84,7 +87,9 @@ class ClientScoringService
         $eligibility = $this->checkEligibility($client, $product, $score, $requestedAmount, $history, $profile);
         $generalMax = $this->generalRecommendedMaxLoan($score, $client, $history);
         $productMax = $product ? $this->recommendedMaxLoanForProduct($product, $score, $client, $history) : null;
-        $recommendedMax = $productMax !== null ? min($productMax, $generalMax) : $generalMax;
+        $baseRecommendedMax = $productMax !== null ? min($productMax, $generalMax) : $generalMax;
+        $collateralBoost = $this->collateralBoostAmount($collateral);
+        $recommendedMax = round($baseRecommendedMax + $collateralBoost, 2);
 
         $amountAssessment = null;
         if ($requestedAmount !== null && $requestedAmount > 0) {
@@ -95,8 +100,19 @@ class ClientScoringService
                 $requestedAmount,
                 $generalMax,
                 $productMax,
-                $loanTerms
+                $loanTerms,
+                $collateral,
+                $collateralBoost,
+                $recommendedMax
             );
+        }
+
+        if ($collateral && $collateralBoost > 0) {
+            $flags[] = [
+                'type' => 'info',
+                'message' => 'Collateral "' . $collateral->title . '" adds TZS '
+                    . number_format($collateralBoost, 2) . ' to the recommended loan limit (advisory).',
+            ];
         }
 
         return [
@@ -105,6 +121,9 @@ class ClientScoringService
             'band_label' => self::BANDS[$band]['label'],
             'passes' => $eligibility['passes'],
             'recommended_max_loan' => $recommendedMax,
+            'base_recommended_max_loan' => $baseRecommendedMax,
+            'collateral_boost' => $collateralBoost,
+            'collateral' => $collateral ? $this->collateralSummary($collateral) : null,
             'general_max_loan' => $generalMax,
             'product_max_loan' => $productMax,
             'amount_assessment' => $amountAssessment,
@@ -827,9 +846,13 @@ class ClientScoringService
         float $requestedAmount,
         float $generalMax,
         ?float $productMax,
-        ?array $loanTerms = null
+        ?array $loanTerms = null,
+        ?Collateral $collateral = null,
+        float $collateralBoost = 0.0,
+        ?float $boostedMax = null
     ): array {
-        $effectiveMax = $productMax !== null ? min($productMax, $generalMax) : $generalMax;
+        $baseMax = $productMax !== null ? min($productMax, $generalMax) : $generalMax;
+        $effectiveMax = $boostedMax ?? ($baseMax + $collateralBoost);
         $affordable = $requestedAmount <= $effectiveMax;
         $income = $this->clientMonthlyIncome($client);
 
@@ -860,16 +883,27 @@ class ClientScoringService
         $alerts = [];
 
         if (!$affordable) {
-            $alerts[] = [
-                'type' => 'danger',
-                'message' => 'Requested TZS ' . number_format($requestedAmount, 2)
-                    . ' exceeds the recommended limit of TZS ' . number_format($effectiveMax, 2)
-                    . ' based on this client\'s score and loan history.',
-            ];
+            $message = 'Requested TZS ' . number_format($requestedAmount, 2)
+                . ' exceeds the recommended limit of TZS ' . number_format($effectiveMax, 2);
+            if ($collateralBoost > 0) {
+                $message .= ' (includes TZS ' . number_format($collateralBoost, 2) . ' collateral boost)';
+            }
+            $message .= '.';
+            $alerts[] = ['type' => 'danger', 'message' => $message];
         } else {
+            $message = 'Requested amount is within the recommended limit of TZS ' . number_format($effectiveMax, 2);
+            if ($collateralBoost > 0) {
+                $message .= ' including collateral boost';
+            }
+            $message .= '.';
+            $alerts[] = ['type' => 'info', 'message' => $message];
+        }
+
+        if ($collateral && $collateralBoost > 0) {
             $alerts[] = [
                 'type' => 'info',
-                'message' => 'Requested amount is within the recommended limit of TZS ' . number_format($effectiveMax, 2) . '.',
+                'message' => 'Collateral "' . $collateral->title . '" (TZS ' . number_format((float) $collateral->estimated_value, 2)
+                    . ') increases borrowing capacity by TZS ' . number_format($collateralBoost, 2) . '.',
             ];
         }
 
@@ -921,6 +955,8 @@ class ClientScoringService
         return [
             'requested_amount' => round($requestedAmount, 2),
             'recommended_max_loan' => $effectiveMax,
+            'base_recommended_max_loan' => $baseMax,
+            'collateral_boost' => $collateralBoost,
             'general_max_loan' => $generalMax,
             'product_max_loan' => $productMax,
             'affordable' => $affordable,
@@ -931,7 +967,33 @@ class ClientScoringService
             'loan_tenure_months' => $tenureMonths,
             'interest_rate' => $interestRate,
             'repayment_frequency' => $frequency,
+            'collateral' => $collateral ? $this->collateralSummary($collateral) : null,
             'alerts' => $alerts,
+        ];
+    }
+
+    private function collateralBoostAmount(?Collateral $collateral): float
+    {
+        if (!$collateral || !$collateral->isAvailable()) {
+            return 0.0;
+        }
+
+        return $collateral->lendingCapacity();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function collateralSummary(Collateral $collateral): array
+    {
+        return [
+            'id' => $collateral->id,
+            'reference_number' => $collateral->reference_number,
+            'title' => $collateral->title,
+            'type' => $collateral->typeLabel(),
+            'estimated_value' => (float) $collateral->estimated_value,
+            'lending_ratio' => (float) $collateral->lending_ratio,
+            'lending_capacity' => $collateral->lendingCapacity(),
         ];
     }
 

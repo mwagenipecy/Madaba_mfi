@@ -192,6 +192,19 @@ Route::middleware([
         Route::get('/{client}/pdf', [App\Http\Controllers\ClientScoringController::class, 'pdf'])->name('pdf');
     });
 
+    // Collateral Management
+    Route::prefix('collaterals')->name('collaterals.')->group(function () {
+        Route::get('/', [App\Http\Controllers\CollateralsController::class, 'index'])->name('index');
+        Route::get('/create', [App\Http\Controllers\CollateralsController::class, 'create'])->name('create');
+        Route::post('/', [App\Http\Controllers\CollateralsController::class, 'store'])->name('store');
+        Route::get('/client/{client}/available', [App\Http\Controllers\CollateralsController::class, 'clientAvailable'])->name('client-available');
+        Route::get('/client/{client}/loans', [App\Http\Controllers\CollateralsController::class, 'clientLoans'])->name('client-loans');
+        Route::get('/{collateral}', [App\Http\Controllers\CollateralsController::class, 'show'])->name('show');
+        Route::get('/{collateral}/edit', [App\Http\Controllers\CollateralsController::class, 'edit'])->name('edit');
+        Route::put('/{collateral}', [App\Http\Controllers\CollateralsController::class, 'update'])->name('update');
+        Route::post('/{collateral}/release', [App\Http\Controllers\CollateralsController::class, 'release'])->name('release');
+    });
+
     // Loan Charges Management
     Route::prefix('loan-charges')->name('loan-charges.')->group(function () {
         Route::get('/', [App\Http\Controllers\LoanChargesController::class, 'index'])->name('index');

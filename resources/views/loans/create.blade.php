@@ -382,6 +382,13 @@
                                 <div><span class="text-gray-500">Recommended max:</span> <span class="font-semibold" id="review_max">-</span></div>
                                 <div><span class="text-gray-500">Status:</span> <span class="font-semibold" id="review_eligible">-</span></div>
                             </div>
+                            <p id="review_collateral_boost" class="hidden mt-2 text-sm text-green-800"></p>
+                        </div>
+
+                        <div id="review_collateral_summary" class="hidden bg-green-50 border border-green-200 rounded-lg p-4">
+                            <h4 class="text-sm font-semibold text-green-900 mb-2">Pledged Collateral</h4>
+                            <p class="text-sm text-green-800" id="review_collateral_text">—</p>
+                            <p class="text-xs text-green-700 mt-1">This collateral will be marked as pledged and cannot be reused until released.</p>
                         </div>
 
                         <!-- Additional Information -->
@@ -396,36 +403,6 @@
                                     @error('purpose')
                                         <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                                     @enderror
-                                </div>
-                                <div class="flex items-center">
-                                    <input type="checkbox" name="requires_collateral" id="requires_collateral" value="1" 
-                                           {{ old('requires_collateral') ? 'checked' : '' }}
-                                           class="h-4 w-4 text-green-600 focus:ring-green-500 border-gray-300 rounded">
-                                    <label for="requires_collateral" class="ml-2 block text-sm text-gray-900">Requires Collateral</label>
-                                </div>
-                                <div id="collateral_details" class="hidden space-y-4">
-                                    <div>
-                                        <label for="collateral_description" class="block text-sm font-medium text-gray-700 mb-1">Collateral Description</label>
-                                        <textarea name="collateral_description" id="collateral_description" rows="2" 
-                                                  class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" 
-                                                  placeholder="Describe the collateral...">{{ old('collateral_description') }}</textarea>
-                                    </div>
-                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label for="collateral_value" class="block text-sm font-medium text-gray-700 mb-1">Collateral Value (TZS)</label>
-                                            <input type="number" name="collateral_value" id="collateral_value" step="0.01" min="0" 
-                                                   value="{{ old('collateral_value') }}"
-                                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" 
-                                                   placeholder="0.00">
-                                        </div>
-                                        <div>
-                                            <label for="collateral_location" class="block text-sm font-medium text-gray-700 mb-1">Collateral Location</label>
-                                            <input type="text" name="collateral_location" id="collateral_location" 
-                                                   value="{{ old('collateral_location') }}"
-                                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500" 
-                                                   placeholder="Location of collateral">
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -469,7 +446,9 @@
         let currentWizardStep = 1;
         let clientScoreData = null;
         let selectedClientUuid = null;
+        let clientCollaterals = [];
         const clientScoreUrlTemplate = @json(route('loans.client-score', ['client' => 'CLIENT_UUID']));
+        const clientCollateralsUrlTemplate = @json(route('collaterals.client-available', ['client' => 'CLIENT_UUID']));
         const totalWizardSteps = 4;
 
         // ===== WIZARD =====
@@ -514,13 +493,24 @@
                 document.getElementById('review_band').textContent = clientScoreData.band_label;
                 document.getElementById('review_max').textContent = clientScoreData.recommended_max_loan !== null
                     ? 'TZS ' + numberFormat(clientScoreData.recommended_max_loan) : 'N/A';
-                document.getElementById('review_eligible').textContent = clientScoreData.passes ? 'Eligible' : 'Not eligible';
+                document.getElementById('review_eligible').textContent = clientScoreData.passes ? 'Looks good (advisory)' : 'Review recommended (advisory)';
                 const amt = parseFloat(document.getElementById('loan_amount').value) || 0;
                 document.getElementById('review_requested_amount').textContent = amt > 0 ? 'TZS ' + numberFormat(amt) : '—';
+
+                const boostEl = document.getElementById('review_collateral_boost');
+                if (clientScoreData.collateral_boost > 0) {
+                    boostEl.classList.remove('hidden');
+                    boostEl.textContent = 'Includes TZS ' + numberFormat(clientScoreData.collateral_boost) + ' collateral boost from "' + (clientScoreData.collateral?.title || 'selected item') + '".';
+                } else {
+                    boostEl.classList.add('hidden');
+                }
+
+                updateReviewCollateralSummary();
             }
 
             if (step === 2 && clientIdInput.value) {
                 updateTenureMonths();
+                loadClientCollaterals();
                 fetchClientScore();
             }
         }
@@ -557,22 +547,9 @@
                 return true;
             }
             if (step === 2) {
-                if (!clientScoreData) {
-                    alert('Please wait for the credit assessment to complete.');
-                    return false;
-                }
-                if (!clientScoreData.passes) {
-                    alert('This client does not pass eligibility checks. Review the assessment before proceeding.');
-                    return false;
-                }
                 return true;
             }
             if (step === 3) {
-                const amount = parseFloat(document.getElementById('loan_amount').value) || 0;
-                if (clientScoreData && clientScoreData.recommended_max_loan !== null && amount > clientScoreData.recommended_max_loan) {
-                    alert('Loan amount exceeds the recommended limit of TZS ' + numberFormat(clientScoreData.recommended_max_loan) + '.');
-                    return false;
-                }
                 return true;
             }
             return true;
@@ -616,6 +593,8 @@
             if (interestRate !== '') params.set('interest_rate', interestRate);
             if (frequency) params.set('repayment_frequency', frequency);
             if (calcMethod) params.set('interest_calculation_method', calcMethod);
+            const collateralId = document.getElementById('collateral_id')?.value;
+            if (collateralId) params.set('collateral_id', collateralId);
 
             const url = clientScoreUrlTemplate.replace('CLIENT_UUID', clientUuid) + (params.toString() ? '?' + params.toString() : '');
 
@@ -646,12 +625,23 @@
             document.getElementById('score_recommended_max').textContent = data.recommended_max_loan !== null
                 ? 'TZS ' + numberFormat(data.recommended_max_loan) : 'N/A';
 
+            const boostPanel = document.getElementById('collateral_boost_panel');
+            if (data.collateral_boost > 0) {
+                boostPanel.classList.remove('hidden');
+                document.getElementById('score_base_max').textContent = data.base_recommended_max_loan !== null
+                    ? 'TZS ' + numberFormat(data.base_recommended_max_loan) : 'N/A';
+                document.getElementById('score_collateral_boost').textContent = '+ TZS ' + numberFormat(data.collateral_boost);
+                document.getElementById('score_effective_max').textContent = 'TZS ' + numberFormat(data.recommended_max_loan);
+            } else {
+                boostPanel.classList.add('hidden');
+            }
+
             renderAmountAssessment(data.amount_assessment);
 
             const badge = document.getElementById('score_eligibility_badge');
-            badge.textContent = data.passes ? 'Eligible' : 'Not eligible';
+            badge.textContent = data.passes ? 'Advisory: within guidelines' : 'Advisory: review before approving';
             badge.className = 'mt-1 inline-flex px-2 py-1 text-xs font-semibold rounded-full ' +
-                (data.passes ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
+                (data.passes ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800');
 
             setFactorBar('repayment', data.factors.repayment_history);
             setFactorBar('arrears', data.factors.arrears);
@@ -712,8 +702,8 @@
             const outlookLabels = { good: 'Good repayment outlook', fair: 'Moderate risk', poor: 'High repayment risk' };
             document.getElementById('assess_requested').textContent = 'TZS ' + numberFormat(assessment.requested_amount);
             document.getElementById('assess_recommended').textContent = 'TZS ' + numberFormat(assessment.recommended_max_loan);
-            document.getElementById('assess_affordable').textContent = assessment.affordable ? 'Yes — within limit' : 'No — exceeds limit';
-            document.getElementById('assess_affordable').className = 'font-semibold ' + (assessment.affordable ? 'text-green-700' : 'text-red-700');
+            document.getElementById('assess_affordable').textContent = assessment.affordable ? 'Yes — within limit (advisory)' : 'Above limit (advisory)';
+            document.getElementById('assess_affordable').className = 'font-semibold ' + (assessment.affordable ? 'text-green-700' : 'text-amber-700');
             const outlookEl = document.getElementById('assess_outlook');
             outlookEl.textContent = outlookLabels[assessment.repayment_outlook] || assessment.repayment_outlook;
             outlookEl.className = 'inline-flex px-2 py-1 text-xs font-semibold rounded-full border ' + (outlookColors[assessment.repayment_outlook] || outlookColors.fair);
@@ -816,6 +806,7 @@
             selectedClientDisplay.classList.remove('hidden');
             clientDropdown.classList.add('hidden');
             resetClientScore();
+            loadClientCollaterals();
         }
         
         function clearClientSelection() {
@@ -824,6 +815,89 @@
             clientSearch.value = '';
             selectedClientDisplay.classList.add('hidden');
             resetClientScore();
+            resetCollateralSelect();
+        }
+
+        async function loadClientCollaterals() {
+            const select = document.getElementById('collateral_id');
+            if (!select) return;
+
+            select.innerHTML = '<option value="">No collateral</option>';
+            clientCollaterals = [];
+            resetCollateralPreview();
+
+            const clientUuid = selectedClientUuid || clients.find(c => c.id == clientIdInput.value)?.uuid;
+            if (!clientUuid) return;
+
+            try {
+                const url = clientCollateralsUrlTemplate.replace('CLIENT_UUID', clientUuid);
+                const response = await fetch(url, {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                if (!response.ok) throw new Error('Failed to load collaterals');
+                clientCollaterals = await response.json();
+                clientCollaterals.forEach(item => {
+                    const opt = document.createElement('option');
+                    opt.value = item.id;
+                    opt.textContent = item.title + ' (' + item.reference_number + ') — capacity TZS ' + numberFormat(item.lending_capacity);
+                    select.appendChild(opt);
+                });
+                @if(old('collateral_id'))
+                    select.value = '{{ old('collateral_id') }}';
+                    updateCollateralPreview();
+                @endif
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function resetCollateralSelect() {
+            const select = document.getElementById('collateral_id');
+            if (select) {
+                select.innerHTML = '<option value="">No collateral</option>';
+            }
+            clientCollaterals = [];
+            resetCollateralPreview();
+            document.getElementById('review_collateral_summary')?.classList.add('hidden');
+        }
+
+        function resetCollateralPreview() {
+            document.getElementById('collateral_preview')?.classList.add('hidden');
+        }
+
+        function updateCollateralPreview() {
+            const select = document.getElementById('collateral_id');
+            const preview = document.getElementById('collateral_preview');
+            if (!select || !preview) return;
+
+            const item = clientCollaterals.find(c => c.id == select.value);
+            if (!item) {
+                resetCollateralPreview();
+                return;
+            }
+
+            preview.classList.remove('hidden');
+            document.getElementById('collateral_preview_title').textContent = item.title + ' (' + item.type + ')';
+            document.getElementById('collateral_preview_value').textContent = 'TZS ' + numberFormat(item.estimated_value);
+            document.getElementById('collateral_preview_capacity').textContent = 'TZS ' + numberFormat(item.lending_capacity);
+            document.getElementById('collateral_preview_ref').textContent = item.reference_number;
+        }
+
+        function updateReviewCollateralSummary() {
+            const select = document.getElementById('collateral_id');
+            const panel = document.getElementById('review_collateral_summary');
+            const text = document.getElementById('review_collateral_text');
+            if (!select || !panel || !text) return;
+
+            const item = clientCollaterals.find(c => c.id == select.value);
+            if (!item) {
+                panel.classList.add('hidden');
+                return;
+            }
+
+            panel.classList.remove('hidden');
+            text.textContent = item.title + ' (' + item.reference_number + ') — value TZS ' + numberFormat(item.estimated_value)
+                + ', lending capacity TZS ' + numberFormat(item.lending_capacity) + '.';
         }
         
         clientSearch.addEventListener('input', function() { filterClients(this.value); });
@@ -851,13 +925,10 @@
             }
         @endif
         
-        // ===== COLLATERAL =====
-        document.getElementById('requires_collateral').addEventListener('change', function() {
-            document.getElementById('collateral_details').classList.toggle('hidden', !this.checked);
+        document.getElementById('collateral_id')?.addEventListener('change', function() {
+            updateCollateralPreview();
+            scheduleScoreRefresh();
         });
-        if (document.getElementById('requires_collateral').checked) {
-            document.getElementById('collateral_details').classList.remove('hidden');
-        }
         
         // ===== CUSTOM MODE TOGGLE =====
         const customToggle = document.getElementById('custom_mode_toggle');
