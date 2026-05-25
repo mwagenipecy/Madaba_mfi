@@ -152,7 +152,6 @@ class LoanChargesController extends Controller
             'status' => $request->status,
             'notes' => $request->notes,
             'processed_by' => Auth::id(),
-            'processed_at' => now(),
         ]);
 
         $statusText = ucfirst($request->status);
@@ -168,27 +167,43 @@ class LoanChargesController extends Controller
         $organizationId = Auth::user()->organization_id ?? Organization::first()?->id;
         
         $loans = Loan::where('organization_id', $organizationId)
-            ->where('status', 'active')
-            ->with(['client', 'loanProduct', 'transactions' => function($query) {
+            ->whereIn('status', ['active', 'overdue', 'disbursed'])
+            ->with(['client', 'loanProduct', 'schedules' => function ($query) {
+                $query->orderBy('installment_number');
+            }, 'transactions' => function($query) {
                 $query->whereIn('transaction_type', ['penalty_fee', 'late_fee'])
                       ->where('status', 'pending')
                       ->orderBy('transaction_date', 'desc');
             }])
-            ->whereHas('transactions', function($query) {
-                $query->whereIn('transaction_type', ['penalty_fee', 'late_fee'])
-                      ->where('status', 'pending');
+            ->where(function ($query) {
+                $query->where('overdue_days', '>', 0)
+                    ->orWhere('overdue_amount', '>', 0)
+                    ->orWhereHas('transactions', function ($chargeQuery) {
+                        $chargeQuery->whereIn('transaction_type', ['penalty_fee', 'late_fee'])
+                            ->where('status', 'pending');
+                    });
             })
-            ->orderBy('created_at', 'desc')
+            ->orderByDesc('overdue_days')
+            ->orderByDesc('created_at')
             ->paginate(20);
 
-        $totalArrearsAmount = LoanTransaction::whereHas('loan', function($query) use ($organizationId) {
-                $query->where('organization_id', $organizationId);
+        $totalArrearsAmount = Loan::where('organization_id', $organizationId)
+            ->whereIn('status', ['active', 'overdue', 'disbursed'])
+            ->sum('overdue_amount');
+
+        $totalArrearsAmount += LoanTransaction::whereHas('loan', function($query) use ($organizationId) {
+                $query->where('organization_id', $organizationId)
+                    ->whereIn('status', ['active', 'overdue', 'disbursed']);
             })
             ->whereIn('transaction_type', ['penalty_fee', 'late_fee'])
             ->where('status', 'pending')
             ->sum('amount');
 
-        return view('loan-charges.arrears', compact('loans', 'totalArrearsAmount'));
+        $totalArrearsDays = Loan::where('organization_id', $organizationId)
+            ->whereIn('status', ['active', 'overdue', 'disbursed'])
+            ->sum('overdue_days');
+
+        return view('loan-charges.arrears', compact('loans', 'totalArrearsAmount', 'totalArrearsDays'));
     }
 
     /**
@@ -213,12 +228,84 @@ class LoanChargesController extends Controller
                 'status' => $request->status,
                 'notes' => $request->notes,
                 'processed_by' => Auth::id(),
-                'processed_at' => now(),
             ]);
 
         $statusText = ucfirst($request->status);
         return redirect()->back()
             ->with('success', "{$updatedCount} charges marked as {$statusText} successfully.");
+    }
+
+    /**
+     * Process payment for all outstanding charge arrears on a loan.
+     */
+    public function payAllForLoan(Request $request, Loan $loan)
+    {
+        $request->validate([
+            'payment_method' => 'required|in:cash,bank_transfer,mobile_money',
+            'payment_reference' => 'nullable|string|max:100',
+            'notes' => 'nullable|string|max:500',
+        ]);
+
+        $organizationId = Auth::user()->organization_id ?? Organization::first()?->id;
+
+        if ($loan->organization_id !== $organizationId) {
+            return redirect()->back()
+                ->withErrors(['error' => 'You do not have permission to process this payment.']);
+        }
+
+        $charges = $loan->transactions()
+            ->whereIn('transaction_type', ['penalty_fee', 'late_fee'])
+            ->where('status', 'pending')
+            ->get();
+
+        if ($charges->isEmpty()) {
+            return redirect()->back()
+                ->withErrors(['error' => 'This loan has no outstanding penalty or late fee charges to pay.']);
+        }
+
+        $totalAmount = $charges->sum('amount');
+
+        DB::beginTransaction();
+        try {
+            foreach ($charges as $charge) {
+                $charge->update([
+                    'status' => 'completed',
+                    'payment_method' => $request->payment_method,
+                    'reference_number' => $request->payment_reference,
+                    'notes' => $request->notes ?: $charge->notes,
+                    'processed_by' => Auth::id(),
+                ]);
+            }
+
+            LoanTransaction::create([
+                'loan_id' => $loan->id,
+                'transaction_number' => LoanTransaction::generateTransactionNumber(),
+                'transaction_type' => 'principal_payment',
+                'amount' => $totalAmount,
+                'penalty_amount' => $totalAmount,
+                'notes' => $request->notes ?: 'Bulk payment for outstanding loan charges',
+                'transaction_date' => now(),
+                'status' => 'completed',
+                'payment_method' => $request->payment_method,
+                'reference_number' => $request->payment_reference,
+                'processed_by' => Auth::id(),
+                'organization_id' => $organizationId,
+                'branch_id' => $loan->branch_id,
+            ]);
+
+            $loan->outstanding_balance = max(0, $loan->outstanding_balance - $totalAmount);
+            $loan->save();
+
+            DB::commit();
+
+            return redirect()->route('loan-charges.arrears')
+                ->with('success', 'All outstanding charges paid successfully.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return redirect()->back()
+                ->withErrors(['error' => 'Failed to process payment. Please try again.']);
+        }
     }
 
     /**
@@ -253,17 +340,18 @@ class LoanChargesController extends Controller
             // Update the charge status
             $loanTransaction->update([
                 'status' => 'completed',
+                'payment_method' => $request->payment_method,
+                'reference_number' => $request->payment_reference,
                 'notes' => $request->notes,
                 'processed_by' => Auth::id(),
-                'processed_at' => now(),
             ]);
 
-            // Create a payment transaction record
             LoanTransaction::create([
                 'loan_id' => $loanTransaction->loan_id,
-                'transaction_number' => 'PAY-' . strtoupper(uniqid()),
+                'transaction_number' => LoanTransaction::generateTransactionNumber(),
                 'transaction_type' => 'principal_payment',
                 'amount' => $request->payment_amount,
+                'penalty_amount' => $request->payment_amount,
                 'notes' => "Payment for {$loanTransaction->transaction_type}: {$loanTransaction->notes}",
                 'transaction_date' => now(),
                 'status' => 'completed',
@@ -271,6 +359,7 @@ class LoanChargesController extends Controller
                 'reference_number' => $request->payment_reference,
                 'processed_by' => Auth::id(),
                 'organization_id' => $organizationId,
+                'branch_id' => $loan->branch_id,
             ]);
 
             // Update loan outstanding balance

@@ -310,6 +310,11 @@ class Loan extends Model
         };
     }
 
+    public function getStatusBadgeClassAttribute(): string
+    {
+        return $this->status_badge_color;
+    }
+
     public function getApprovalStatusBadgeColorAttribute(): string
     {
         return match($this->approval_status) {

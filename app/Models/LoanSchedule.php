@@ -147,14 +147,6 @@ class LoanSchedule extends Model
         return $this->due_date < today() && $this->status !== 'paid';
     }
 
-    public function getDaysOverdueAttribute(): int
-    {
-        if ($this->due_date >= today() || $this->status === 'paid') {
-            return 0;
-        }
-        return $this->due_date->diffInDays(today());
-    }
-
     // Methods
     public function applyPayment(float $principalPaid, float $interestPaid): void
     {
@@ -174,22 +166,23 @@ class LoanSchedule extends Model
             $this->paid_date = $this->paid_date ?? now();
             $this->outstanding_amount = 0;
             $this->days_overdue = 0;
+
             return;
         }
 
         if ($this->paid_amount > 0) {
             $this->status = 'partial';
+
             return;
         }
 
         if ($this->due_date->lt(today())) {
             $this->status = 'overdue';
-            $this->days_overdue = $this->due_date->diffInDays(today());
+
             return;
         }
 
         $this->status = 'pending';
-        $this->days_overdue = 0;
     }
 
     public function markAsPaid($amount = null, $date = null): void

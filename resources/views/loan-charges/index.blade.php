@@ -98,11 +98,11 @@
                                                     <div class="text-sm text-gray-500">{{ $loan->loanProduct->name ?? 'N/A' }}</div>
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap">
-                                                    <div class="text-sm font-medium text-gray-900">{{ $loan->client->name ?? 'N/A' }}</div>
-                                                    <div class="text-sm text-gray-500">{{ $loan->client->phone ?? 'N/A' }}</div>
+                                                    <div class="text-sm font-medium text-gray-900">{{ $loan->client->display_name ?? 'N/A' }}</div>
+                                                    <div class="text-sm text-gray-500">{{ $loan->client->phone_number ?? 'N/A' }}</div>
                                                 </td>
                                                 <td class="px-6 py-4 whitespace-nowrap">
-                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $transaction->status_badge_class }}">
+                                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $transaction->transaction_type_badge_class }}">
                                                         {{ ucfirst(str_replace('_', ' ', $transaction->transaction_type)) }}
                                                     </span>
                                                 </td>

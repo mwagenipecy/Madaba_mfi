@@ -316,6 +316,14 @@
                     <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                         <div class="p-6">
                             <h2 class="text-lg font-semibold text-gray-900 mb-4">Payment Schedule</h2>
+                            @if(($loan->overdue_days ?? 0) > 0)
+                                <p class="mb-4 text-sm text-red-700">
+                                    Total arrears days: <span class="font-semibold">{{ $loan->overdue_days }}</span>
+                                    @if(($loan->overdue_amount ?? 0) > 0)
+                                        &middot; Overdue amount: <span class="font-semibold">TZS {{ number_format($loan->overdue_amount, 2) }}</span>
+                                    @endif
+                                </p>
+                            @endif
                             <div class="overflow-x-auto">
                                 <table class="min-w-full divide-y divide-gray-200">
                                     <thead class="bg-gray-50">
@@ -327,6 +335,7 @@
                                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
                                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paid (P / I)</th>
                                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Outstanding</th>
+                                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Arrears Days</th>
                                             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                                         </tr>
                                     </thead>
@@ -350,6 +359,13 @@
                                                 TZS {{ number_format($schedule->paid_principal_amount ?? 0, 2) }} / {{ number_format($schedule->paid_interest_amount ?? 0, 2) }}
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">TZS {{ number_format($schedule->remaining_total, 2) }}</td>
+                                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                                @if(($schedule->days_overdue ?? 0) > 0)
+                                                    <span class="text-red-600 font-medium">{{ $schedule->days_overdue }}</span>
+                                                @else
+                                                    0
+                                                @endif
+                                            </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
                                                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{ $statusColors[$schedule->status] ?? 'bg-gray-100 text-gray-800' }}">
                                                     {{ ucfirst($schedule->status) }}

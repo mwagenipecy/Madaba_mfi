@@ -12,6 +12,34 @@ use Illuminate\Support\Facades\Storage;
 
 class ClientsController extends Controller
 {
+    private const CRB_METADATA_FIELDS = [
+        'birth_surname',
+        'number_of_spouse',
+        'number_of_children',
+        'country_of_birth',
+        'fate_status',
+        'social_status',
+        'residency',
+        'citizenship',
+        'nationality',
+        'education',
+        'monthly_expenses',
+        'tax_identification_number',
+        'passport_issuer_country',
+        'driving_license_number',
+        'voters_id',
+        'foreign_unique_id',
+        'custom_id_number_1',
+        'custom_id_number_2',
+        'street',
+        'number_of_building',
+        'web_page',
+        'trade_name',
+        'legal_form',
+        'establishment_date',
+        'registration_country',
+        'industry_sector',
+    ];
     /**
      * Display a listing of clients
      */
@@ -159,6 +187,7 @@ class ClientsController extends Controller
         $rules['years_in_business'] = 'nullable|integer|min:0|max:100';
         $rules['annual_turnover'] = 'nullable|numeric|min:0|max:9999999999.99';
         $rules['notes'] = 'nullable|string|max:1000';
+        $rules = array_merge($rules, $this->crbMetadataValidationRules());
         
         // KYC Documents validation - only validate if files are uploaded
         if ($request->hasFile('kyc_documents')) {
@@ -229,7 +258,9 @@ class ClientsController extends Controller
             'gender' => $request->gender,
             'national_id' => $request->national_id,
             'passport_number' => $request->passport_number,
-            'business_name' => $request->business_name,
+            'business_name' => $request->client_type === 'individual'
+                ? $request->individual_business_name
+                : $request->business_name,
             'business_registration_number' => $request->business_registration_number,
             'business_type' => $request->business_type,
             'phone_number' => $request->phone_number,
@@ -256,6 +287,7 @@ class ClientsController extends Controller
             'years_in_business' => $request->years_in_business,
             'annual_turnover' => $request->annual_turnover,
             'notes' => $request->notes,
+            'metadata' => $this->buildClientMetadataFromRequest($request),
             'kyc_status' => 'pending',
             'created_by' => Auth::id(),
         ]);
@@ -421,6 +453,7 @@ class ClientsController extends Controller
         $rules['years_in_business'] = 'nullable|integer|min:0';
         $rules['annual_turnover'] = 'nullable|numeric|min:0';
         $rules['notes'] = 'nullable|string';
+        $rules = array_merge($rules, $this->crbMetadataValidationRules());
         
         // KYC Documents validation - only validate if files are uploaded
         $hasValidFiles = false;
@@ -550,7 +583,14 @@ class ClientsController extends Controller
         $allDocuments = array_merge($existingDocuments, $newDocuments);
 
         // Prepare update data - include documents in the update
-        $updateData = $request->except(['kyc_documents', 'kyc_document_types', 'kyc_document_descriptions', 'removed_documents']);
+        $updateData = $request->except(array_merge(
+            ['kyc_documents', 'kyc_document_types', 'kyc_document_descriptions', 'removed_documents', 'individual_business_name'],
+            self::CRB_METADATA_FIELDS
+        ));
+        $updateData['metadata'] = $this->buildClientMetadataFromRequest($request, $client);
+        $updateData['business_name'] = $request->client_type === 'individual'
+            ? $request->individual_business_name
+            : $request->business_name;
         $updateData['kyc_documents'] = $allDocuments;
         $updateData['updated_by'] = Auth::id();
         
@@ -732,5 +772,59 @@ class ClientsController extends Controller
         return response()->json([
             'client_number' => Client::generateClientNumber()
         ]);
+    }
+
+    private function crbMetadataValidationRules(): array
+    {
+        return [
+            'individual_business_name' => 'nullable|string|max:255',
+            'birth_surname' => 'nullable|string|max:255',
+            'number_of_spouse' => 'nullable|integer|min:0|max:20',
+            'number_of_children' => 'nullable|integer|min:0|max:50',
+            'country_of_birth' => 'nullable|string|max:100',
+            'fate_status' => 'nullable|string|max:100',
+            'social_status' => 'nullable|string|max:100',
+            'residency' => 'nullable|string|max:100',
+            'citizenship' => 'nullable|string|max:100',
+            'nationality' => 'nullable|string|max:100',
+            'education' => 'nullable|string|max:255',
+            'monthly_expenses' => 'nullable|numeric|min:0|max:999999999.99',
+            'tax_identification_number' => 'nullable|string|max:100',
+            'passport_issuer_country' => 'nullable|string|max:100',
+            'driving_license_number' => 'nullable|string|max:100',
+            'voters_id' => 'nullable|string|max:100',
+            'foreign_unique_id' => 'nullable|string|max:100',
+            'custom_id_number_1' => 'nullable|string|max:100',
+            'custom_id_number_2' => 'nullable|string|max:100',
+            'street' => 'nullable|string|max:255',
+            'number_of_building' => 'nullable|string|max:100',
+            'web_page' => 'nullable|string|max:255',
+            'trade_name' => 'nullable|string|max:255',
+            'legal_form' => 'nullable|string|max:255',
+            'establishment_date' => 'nullable|date|before_or_equal:today',
+            'registration_country' => 'nullable|string|max:100',
+            'industry_sector' => 'nullable|string|max:255',
+        ];
+    }
+
+    private function buildClientMetadataFromRequest(Request $request, ?Client $client = null): array
+    {
+        $metadata = is_array($client?->metadata) ? $client->metadata : [];
+
+        foreach (self::CRB_METADATA_FIELDS as $key) {
+            if (!$request->has($key)) {
+                continue;
+            }
+
+            $value = $request->input($key);
+            if ($value === null || $value === '') {
+                unset($metadata[$key]);
+                continue;
+            }
+
+            $metadata[$key] = $value;
+        }
+
+        return $metadata;
     }
 }

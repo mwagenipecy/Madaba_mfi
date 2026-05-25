@@ -155,6 +155,7 @@ Route::middleware([
         Route::get('/dashboard', [App\Http\Controllers\LoansController::class, 'dashboard'])->name('dashboard');
         Route::get('/', [App\Http\Controllers\LoansController::class, 'index'])->name('index');
         Route::get('/create', [App\Http\Controllers\LoansController::class, 'create'])->name('create');
+        Route::get('/client-score/{client}', [App\Http\Controllers\LoansController::class, 'clientScore'])->name('client-score');
         Route::post('/', [App\Http\Controllers\LoansController::class, 'store'])->name('store');
         Route::get('/applications', [App\Http\Controllers\LoansController::class, 'applications'])->name('applications');
         Route::get('/approvals', [App\Http\Controllers\LoansController::class, 'approvals'])->name('approvals');
@@ -185,19 +186,24 @@ Route::middleware([
         Route::post('/{loan}/adjust-schedule', [App\Http\Controllers\LoansController::class, 'adjustSchedule'])->name('adjust-schedule');
     });
 
+    // Client Credit Scoring
+    Route::prefix('scoring')->name('scoring.')->group(function () {
+        Route::get('/', [App\Http\Controllers\ClientScoringController::class, 'index'])->name('index');
+        Route::get('/{client}/pdf', [App\Http\Controllers\ClientScoringController::class, 'pdf'])->name('pdf');
+    });
+
     // Loan Charges Management
     Route::prefix('loan-charges')->name('loan-charges.')->group(function () {
         Route::get('/', [App\Http\Controllers\LoanChargesController::class, 'index'])->name('index');
         Route::get('/create', [App\Http\Controllers\LoanChargesController::class, 'create'])->name('create');
+        Route::get('/arrears', [App\Http\Controllers\LoanChargesController::class, 'arrears'])->name('arrears');
         Route::post('/', [App\Http\Controllers\LoanChargesController::class, 'store'])->name('store');
         Route::post('/bulk-update', [App\Http\Controllers\LoanChargesController::class, 'bulkUpdate'])->name('bulk-update');
+        Route::post('/loan/{loan}/pay-all', [App\Http\Controllers\LoanChargesController::class, 'payAllForLoan'])->name('pay-all');
         Route::get('/{loanTransaction}', [App\Http\Controllers\LoanChargesController::class, 'show'])->name('show');
         Route::patch('/{loanTransaction}/status', [App\Http\Controllers\LoanChargesController::class, 'updateStatus'])->name('update-status');
         Route::post('/{loanTransaction}/pay', [App\Http\Controllers\LoanChargesController::class, 'processPayment'])->name('pay');
     });
-    
-    // Arrears route (temporarily outside the group for testing)
-    Route::get('/loan-charges/arrears', [App\Http\Controllers\LoanChargesController::class, 'arrears'])->name('loan-charges.arrears');
 
     // Approvals Management
     Route::prefix('approvals')->name('approvals.')->group(function () {

@@ -551,59 +551,109 @@ trait CrbReportSheetMethods
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Company');
 
-        // Headers
         $headers = [
-            'A1' => 'Organization ID',
-            'B1' => 'Organization Name',
-            'C1' => 'Registration Number',
-            'D1' => 'Address',
-            'E1' => 'City',
-            'F1' => 'State',
-            'G1' => 'Country',
-            'H1' => 'Phone',
-            'I1' => 'Email',
-            'J1' => 'Website',
-            'K1' => 'Total Branches',
-            'L1' => 'Total Clients',
-            'M1' => 'Total Loans',
-            'N1' => 'Total Outstanding',
-            'O1' => 'Registration Date'
+            'Customer Code',
+            'Company Name',
+            'Trade Name',
+            'Legal Form',
+            'Establishment Date',
+            'Registration Country',
+            'Industry Sector',
+            'Registration Number',
+            'Tax Identification Number',
+            'Street',
+            'Number of Building',
+            'Postal Code',
+            'Region',
+            'District',
+            'Country',
+            'Mobile Phone',
+            'Fixed Line',
+            'E-mail',
+            'Web Page',
         ];
 
-        foreach ($headers as $cell => $value) {
-            $sheet->setCellValue($cell, $value);
+        $lastColumn = Coordinate::stringFromColumnIndex(count($headers));
+
+        foreach ($headers as $index => $header) {
+            $column = Coordinate::stringFromColumnIndex($index + 1);
+            $sheet->setCellValue($column . '1', $header);
         }
 
-        // Style headers
-        $this->styleHeaders($sheet, 'A1:O1');
+        $this->styleHeaders($sheet, 'A1:' . $lastColumn . '1');
 
-        // Data rows
         $row = 2;
-        $organization = $data['organization'];
-        
-        $totalBranches = \App\Models\Branch::where('organization_id', $organization->id)->count();
-        $totalClients = $data['clients']->count();
-        $totalLoans = $data['loans']->count();
-        $totalOutstanding = $data['loans']->sum('outstanding_balance');
+        $contractLoans = $data['contract_loans'] ?? $this->getLatestActiveContractsPerCustomer($data['loans']);
+        $linkedClientIds = $contractLoans->pluck('client_id')->unique();
+        $linkedCustomerCodes = $contractLoans
+            ->map(fn ($loan) => $loan->client?->client_number)
+            ->filter()
+            ->unique();
 
-        $sheet->setCellValue('A' . $row, $organization->id);
-        $sheet->setCellValue('B' . $row, $organization->name);
-        $sheet->setCellValue('C' . $row, $organization->registration_number ?? 'N/A');
-        $sheet->setCellValue('D' . $row, $organization->address ?? 'N/A');
-        $sheet->setCellValue('E' . $row, $organization->city ?? 'N/A');
-        $sheet->setCellValue('F' . $row, $organization->state ?? 'N/A');
-        $sheet->setCellValue('G' . $row, $organization->country ?? 'N/A');
-        $sheet->setCellValue('H' . $row, $organization->phone ?? 'N/A');
-        $sheet->setCellValue('I' . $row, $organization->email ?? 'N/A');
-        $sheet->setCellValue('J' . $row, $organization->website ?? 'N/A');
-        $sheet->setCellValue('K' . $row, $totalBranches);
-        $sheet->setCellValue('L' . $row, $totalClients);
-        $sheet->setCellValue('M' . $row, $totalLoans);
-        $sheet->setCellValue('N' . $row, $totalOutstanding);
-        $sheet->setCellValue('O' . $row, $organization->created_at->format('Y-m-d'));
+        $clients = $data['clients']
+            ->whereIn('client_type', ['business', 'group'])
+            ->filter(function ($client) use ($linkedClientIds, $linkedCustomerCodes) {
+                return $linkedClientIds->contains($client->id)
+                    || $linkedCustomerCodes->contains($client->client_number);
+            });
 
-        // Auto-size columns
-        $this->autoSizeColumns($sheet, 'A', 'O');
+        foreach ($clients as $client) {
+            $values = $this->mapCompanyCrbRow($client);
+
+            foreach ($values as $index => $value) {
+                $column = Coordinate::stringFromColumnIndex($index + 1);
+                $sheet->setCellValue($column . $row, $value);
+            }
+
+            $row++;
+        }
+
+        $this->autoSizeColumns($sheet, 'A', $lastColumn);
+    }
+
+    /**
+     * Map a business/group client record to CRB Company sheet columns.
+     */
+    private function mapCompanyCrbRow($client): array
+    {
+        $meta = is_array($client->metadata) ? $client->metadata : [];
+        $country = $this->crbValue($client->country);
+
+        return [
+            $this->crbValue($client->client_number),
+            $this->crbValue($client->business_name),
+            $this->crbMetadata($meta, 'trade_name'),
+            $this->crbLegalForm($client->business_type, $meta),
+            $this->crbFormatDate($this->crbMetadata($meta, 'establishment_date') ?: $client->created_at),
+            $this->crbMetadata($meta, 'registration_country', $country),
+            $this->crbMetadata($meta, 'industry_sector', $this->crbValue($client->business_description ?: $client->occupation)),
+            $this->crbValue($client->business_registration_number),
+            $this->crbMetadata($meta, 'tax_identification_number'),
+            $this->crbMetadata($meta, 'street', $this->crbValue($client->physical_address)),
+            $this->crbMetadata($meta, 'number_of_building'),
+            $this->crbValue($client->postal_code),
+            $this->crbValue($client->region),
+            $this->crbValue($client->city),
+            $country,
+            $this->crbValue($client->phone_number),
+            $this->crbValue($client->secondary_phone),
+            $this->crbValue($client->email),
+            $this->crbMetadata($meta, 'web_page'),
+        ];
+    }
+
+    private function crbLegalForm(?string $businessType, array $meta): string
+    {
+        $fromMeta = $this->crbMetadata($meta, 'legal_form');
+        if ($fromMeta !== '') {
+            return $fromMeta;
+        }
+
+        if (empty($businessType)) {
+            return '';
+        }
+
+        return ucfirst(str_replace('_', ' ', $businessType));
     }
 
     /**

@@ -44,7 +44,8 @@ class OtpVerificationMail extends Mailable
             with: [
                 'otpCode' => $this->otp->otp_code,
                 'expiresAt' => $this->otp->expires_at,
-                'userName' => $this->otp->user->name,
+                'expiryMinutes' => max(1, (int) now()->diffInMinutes($this->otp->expires_at, false)),
+                'userName' => $this->otp->user->full_name,
             ]
         );
     }

@@ -23,8 +23,8 @@ class OrganizationWelcomeMail extends Mailable
 
     public function build()
     {
-        return $this->subject('Welcome to MicroFin Pro - Registration Successful')
-                   ->markdown('emails.organization-welcome')
+        return $this->subject('Welcome to '.config('app.name').' - Registration Successful')
+                   ->view('emails.organization-welcome')
                    ->with([
                        'organization' => $this->organization,
                        'user' => $this->user,

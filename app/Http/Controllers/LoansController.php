@@ -11,6 +11,7 @@ use App\Models\Branch;
 use App\Models\User;
 use App\Models\Organization;
 use App\Services\LoanRepaymentAllocator;
+use App\Services\ClientScoringService;
 use App\Models\Account;
 use App\Models\SystemLog;
 use Illuminate\Http\Request;
@@ -108,6 +109,54 @@ class LoansController extends Controller
             ->get();
 
         return view('loans.create', compact('clients', 'loanProducts', 'branches', 'loanOfficers', 'userOrganization'));
+    }
+
+    /**
+     * Return client credit score for loan application wizard.
+     */
+    public function clientScore(Request $request, string $client, ClientScoringService $scoringService)
+    {
+        $userOrganizationId = auth()->user()->organization_id;
+        if (!$userOrganizationId) {
+            abort(403, 'You must be assigned to an organization.');
+        }
+
+        $clientModel = Client::query()
+            ->where('organization_id', $userOrganizationId)
+            ->where(function ($query) use ($client) {
+                $query->where('uuid', $client);
+                if (is_numeric($client)) {
+                    $query->orWhere('id', (int) $client);
+                }
+            })
+            ->firstOrFail();
+
+        $product = null;
+        if ($request->filled('loan_product_id')) {
+            $product = LoanProduct::where('id', $request->loan_product_id)
+                ->where('organization_id', $userOrganizationId)
+                ->first();
+        }
+
+        $requestedAmount = $request->filled('loan_amount') ? (float) $request->loan_amount : null;
+
+        $loanTerms = null;
+        if ($request->filled('loan_tenure_months') || $request->filled('interest_rate')) {
+            $loanTerms = [
+                'tenure_months' => $request->filled('loan_tenure_months')
+                    ? (float) $request->loan_tenure_months
+                    : null,
+                'interest_rate' => $request->filled('interest_rate')
+                    ? (float) $request->interest_rate
+                    : null,
+                'repayment_frequency' => $request->input('repayment_frequency', 'monthly'),
+                'interest_calculation_method' => $request->input('interest_calculation_method', 'flat'),
+            ];
+        }
+
+        return response()->json(
+            $scoringService->score($clientModel, $product, $requestedAmount, $loanTerms)
+        );
     }
 
     /**
@@ -217,6 +266,22 @@ class LoansController extends Controller
         
         // Build metadata for custom loan details
         $metadata = [];
+
+        $scoring = app(ClientScoringService::class)->score(
+            $client,
+            $loanProduct,
+            (float) $request->loan_amount
+        );
+
+        if (!$scoring['passes']) {
+            $failedCheck = collect($scoring['eligibility']['checks'])->first(fn ($check) => !$check['passed']);
+
+            return redirect()->back()
+                ->withErrors(['client_id' => $failedCheck['message'] ?? 'Client does not meet eligibility requirements for this loan.'])
+                ->withInput();
+        }
+
+        $metadata['client_scoring'] = $scoring;
         
         if ($isCustomMode) {
             $metadata['custom_mode'] = true;

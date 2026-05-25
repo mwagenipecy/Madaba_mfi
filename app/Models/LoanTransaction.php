@@ -111,6 +111,16 @@ class LoanTransaction extends Model
         };
     }
 
+    public function getStatusBadgeClassAttribute(): string
+    {
+        return $this->status_badge_color;
+    }
+
+    public function getTransactionTypeBadgeClassAttribute(): string
+    {
+        return $this->transaction_type_badge_color;
+    }
+
     public function getTransactionTypeBadgeColorAttribute(): string
     {
         return match($this->transaction_type) {

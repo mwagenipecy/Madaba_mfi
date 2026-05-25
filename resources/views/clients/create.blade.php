@@ -188,10 +188,12 @@
                     <!-- Dependents -->
                     <div>
                         <label for="dependents" class="block text-sm font-medium text-gray-700 mb-2">Number of Dependents</label>
-                        <input type="number" id="dependents" name="dependents" min="0"
+                        <input type="number" id="dependents" name="dependents" min="0" value="{{ old('dependents') }}"
                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                placeholder="0">
                     </div>
+
+                    @include('clients.partials.crb-individual-fields', ['meta' => []])
                 </div>
             </div>
 
@@ -247,11 +249,13 @@
 
                     <!-- Business Description -->
                     <div class="md:col-span-2">
-                        <label for="business_description" class="block text-sm font-medium text-gray-700 mb-2">Business Description</label>
+                        <label for="business_description" class="block text-sm font-medium text-gray-700 mb-2">Industry Sector / Business Description</label>
                         <textarea id="business_description" name="business_description" rows="3"
                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                                  placeholder="Describe the nature of the business"></textarea>
+                                  placeholder="Describe the industry sector or nature of the business">{{ old('business_description') }}</textarea>
                     </div>
+
+                    @include('clients.partials.crb-company-fields', ['meta' => []])
                 </div>
             </div>
 
@@ -289,7 +293,8 @@
 
                     <!-- Physical Address -->
                     <div class="md:col-span-2">
-                        <label for="physical_address" class="block text-sm font-medium text-gray-700 mb-2">Physical Address *</label>
+                        <label for="physical_address" class="block text-sm font-medium text-gray-700 mb-2">Main Address *</label>
+                        <p class="text-xs text-gray-500 mb-2">Used as Main address on the CRB report.</p>
                         <textarea id="physical_address" name="physical_address" rows="2" required
                                   class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 {{ $errors->has('physical_address') ? 'border-red-500' : '' }}"
                                   placeholder="Enter complete physical address">{{ old('physical_address') }}</textarea>
@@ -298,12 +303,28 @@
                         @enderror
                     </div>
 
+                    <!-- Street -->
+                    <div>
+                        <label for="street" class="block text-sm font-medium text-gray-700 mb-2">Street</label>
+                        <input type="text" id="street" name="street" value="{{ old('street') }}"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                               placeholder="Street name">
+                    </div>
+
+                    <!-- Number of Building -->
+                    <div>
+                        <label for="number_of_building" class="block text-sm font-medium text-gray-700 mb-2">Number of Building</label>
+                        <input type="text" id="number_of_building" name="number_of_building" value="{{ old('number_of_building') }}"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                               placeholder="Building number">
+                    </div>
+
                     <!-- City -->
                     <div>
-                        <label for="city" class="block text-sm font-medium text-gray-700 mb-2">City *</label>
+                        <label for="city" class="block text-sm font-medium text-gray-700 mb-2">City / District *</label>
                         <input type="text" id="city" name="city" required value="{{ old('city') }}"
                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 {{ $errors->has('city') ? 'border-red-500' : '' }}"
-                               placeholder="Enter city">
+                               placeholder="Enter city or district">
                         @error('city')
                             <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                         @enderror
@@ -330,9 +351,25 @@
                     <!-- Postal Code -->
                     <div>
                         <label for="postal_code" class="block text-sm font-medium text-gray-700 mb-2">Postal Code</label>
-                        <input type="text" id="postal_code" name="postal_code"
+                        <input type="text" id="postal_code" name="postal_code" value="{{ old('postal_code') }}"
                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                placeholder="Enter postal code">
+                    </div>
+
+                    <!-- Tax Identification Number -->
+                    <div>
+                        <label for="tax_identification_number" class="block text-sm font-medium text-gray-700 mb-2">Tax Identification Number</label>
+                        <input type="text" id="tax_identification_number" name="tax_identification_number" value="{{ old('tax_identification_number') }}"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                               placeholder="TIN">
+                    </div>
+
+                    <!-- Web Page -->
+                    <div>
+                        <label for="web_page" class="block text-sm font-medium text-gray-700 mb-2">Web Page</label>
+                        <input type="url" id="web_page" name="web_page" value="{{ old('web_page') }}"
+                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                               placeholder="https://example.com">
                     </div>
                 </div>
             </div>
@@ -343,13 +380,27 @@
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <!-- Monthly Income -->
-                    <div>
+                    <div id="monthly_income_field">
                         <label for="monthly_income" class="block text-sm font-medium text-gray-700 mb-2">Monthly Income (TZS)</label>
+                        <p class="text-xs text-gray-500 mb-2">Maps to Income Available on the CRB Individual report.</p>
                         <div class="relative">
                             <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                 <span class="text-gray-500 sm:text-sm">TZS</span>
                             </div>
-                            <input type="number" id="monthly_income" name="monthly_income" step="0.01" min="0"
+                            <input type="number" id="monthly_income" name="monthly_income" step="0.01" min="0" value="{{ old('monthly_income') }}"
+                                   class="w-full pl-12 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                   placeholder="0.00">
+                        </div>
+                    </div>
+
+                    <!-- Monthly Expenses -->
+                    <div id="monthly_expenses_field" style="display: none;">
+                        <label for="monthly_expenses" class="block text-sm font-medium text-gray-700 mb-2">Monthly Expenses (TZS)</label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <span class="text-gray-500 sm:text-sm">TZS</span>
+                            </div>
+                            <input type="number" id="monthly_expenses" name="monthly_expenses" step="0.01" min="0" value="{{ old('monthly_expenses') }}"
                                    class="w-full pl-12 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                    placeholder="0.00">
                         </div>
@@ -369,23 +420,23 @@
                     </div>
 
                     <!-- Income Source -->
-                    <div>
+                    <div id="income_source_field">
                         <label for="income_source" class="block text-sm font-medium text-gray-700 mb-2">Income Source</label>
-                        <input type="text" id="income_source" name="income_source"
+                        <input type="text" id="income_source" name="income_source" value="{{ old('income_source') }}"
                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                placeholder="Employment, business, etc.">
                     </div>
 
                     <!-- Occupation -->
-                    <div>
-                        <label for="occupation" class="block text-sm font-medium text-gray-700 mb-2">Occupation</label>
-                        <input type="text" id="occupation" name="occupation"
+                    <div id="occupation_field">
+                        <label for="occupation" class="block text-sm font-medium text-gray-700 mb-2">Employment / Occupation</label>
+                        <input type="text" id="occupation" name="occupation" value="{{ old('occupation') }}"
                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                                placeholder="Enter occupation">
                     </div>
 
                     <!-- Employer Name -->
-                    <div>
+                    <div id="employer_name_field">
                         <label for="employer_name" class="block text-sm font-medium text-gray-700 mb-2">Employer Name</label>
                         <input type="text" id="employer_name" name="employer_name"
                                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
@@ -543,27 +594,75 @@
     </div>
 
     <script>
+        function setSectionFieldsDisabled(section, disabled) {
+            if (!section) {
+                return;
+            }
+
+            section.querySelectorAll('input, select, textarea').forEach(el => {
+                el.disabled = disabled;
+            });
+        }
+
+        function setContainerFieldsDisabled(container, disabled) {
+            if (!container) {
+                return;
+            }
+
+            container.querySelectorAll('input, select, textarea').forEach(el => {
+                el.disabled = disabled;
+            });
+        }
+
         function toggleClientTypeFields() {
             const clientType = document.getElementById('client_type').value;
             const individualFields = document.getElementById('individual_fields');
             const businessFields = document.getElementById('business_fields');
             const annualTurnoverField = document.getElementById('annual_turnover_field');
+            const monthlyExpensesField = document.getElementById('monthly_expenses_field');
+            const individualFinancialFields = ['occupation_field', 'employer_name_field', 'income_source_field', 'monthly_income_field'];
 
-            // Hide all fields first
             individualFields.style.display = 'none';
             businessFields.style.display = 'none';
             annualTurnoverField.style.display = 'none';
+            monthlyExpensesField.style.display = 'none';
+            individualFinancialFields.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.style.display = 'none';
+                    setContainerFieldsDisabled(el, true);
+                }
+            });
 
-            // Show relevant fields based on client type
+            setSectionFieldsDisabled(individualFields, true);
+            setSectionFieldsDisabled(businessFields, true);
+            setContainerFieldsDisabled(monthlyExpensesField, true);
+            setContainerFieldsDisabled(annualTurnoverField, true);
+
             if (clientType === 'individual') {
                 individualFields.style.display = 'block';
+                monthlyExpensesField.style.display = 'block';
+                setSectionFieldsDisabled(individualFields, false);
+                setContainerFieldsDisabled(monthlyExpensesField, false);
+                individualFinancialFields.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) {
+                        el.style.display = 'block';
+                        setContainerFieldsDisabled(el, false);
+                    }
+                });
             } else if (clientType === 'business' || clientType === 'group') {
                 businessFields.style.display = 'block';
+                setSectionFieldsDisabled(businessFields, false);
                 if (clientType === 'business') {
                     annualTurnoverField.style.display = 'block';
+                    setContainerFieldsDisabled(annualTurnoverField, false);
                 }
             }
         }
+
+        document.getElementById('client_type').addEventListener('change', toggleClientTypeFields);
+        toggleClientTypeFields();
 
         // Add more KYC document fields
         document.getElementById('add_kyc_document').addEventListener('click', function() {

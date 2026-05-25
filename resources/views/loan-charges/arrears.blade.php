@@ -13,6 +13,18 @@
 
     <div class="py-6">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            @if(session('success'))
+                <div class="mb-6 bg-green-50 border border-green-200 text-green-800 rounded-lg p-4">
+                    {{ session('success') }}
+                </div>
+            @endif
+
+            @if($errors->any())
+                <div class="mb-6 bg-red-50 border border-red-200 text-red-800 rounded-lg p-4">
+                    {{ $errors->first() }}
+                </div>
+            @endif
+
             <!-- Summary Card -->
             <div class="bg-red-50 border border-red-200 rounded-md p-6 mb-6">
                 <div class="flex">
@@ -27,7 +39,10 @@
                             TZS {{ number_format($totalArrearsAmount, 2) }}
                         </div>
                         <p class="mt-1 text-sm text-red-700">
-                            {{ $loans->count() }} loan(s) with outstanding penalties and late fees
+                            {{ $loans->total() }} loan(s) in arrears
+                            @if(($totalArrearsDays ?? 0) > 0)
+                                &middot; {{ number_format($totalArrearsDays) }} total days in arrears
+                            @endif
                         </p>
                     </div>
                 </div>
@@ -36,7 +51,7 @@
             <!-- Arrears Table -->
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
                 <div class="p-6">
-                    <h3 class="text-lg font-medium text-gray-900 mb-4">Loans with Outstanding Charges</h3>
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Loans with Outstanding Arrears</h3>
                     
                     @if($loans->count() > 0)
                         <div class="overflow-x-auto">
@@ -46,6 +61,7 @@
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Loan Details</th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client</th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Outstanding Charges</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Overdue Amount</th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Days Overdue</th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                     </tr>
@@ -53,9 +69,12 @@
                                 <tbody class="bg-white divide-y divide-gray-200">
                                     @foreach($loans as $loan)
                                         @php
-                                            $outstandingCharges = $loan->transactions->whereIn('transaction_type', ['penalty_fee', 'late_fee'])->where('status', 'pending');
+                                            $outstandingCharges = $loan->transactions
+                                                ->whereIn('transaction_type', ['penalty_fee', 'late_fee'])
+                                                ->where('status', 'pending');
                                             $totalOutstanding = $outstandingCharges->sum('amount');
-                                            $daysOverdue = $loan->overdue_days ?? 0;
+                                            $daysOverdue = (int) ($loan->overdue_days ?? 0);
+                                            $overdueAmount = (float) ($loan->overdue_amount ?? 0);
                                         @endphp
                                         <tr class="hover:bg-gray-50">
                                             <td class="px-6 py-4 whitespace-nowrap">
@@ -64,17 +83,30 @@
                                                 <div class="text-sm text-gray-500">TZS {{ number_format($loan->loan_amount, 2) }}</div>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
-                                                <div class="text-sm font-medium text-gray-900">{{ $loan->client->name ?? 'N/A' }}</div>
-                                                <div class="text-sm text-gray-500">{{ $loan->client->phone ?? 'N/A' }}</div>
+                                                <div class="text-sm font-medium text-gray-900">{{ $loan->client->display_name ?? 'N/A' }}</div>
+                                                <div class="text-sm text-gray-500">{{ $loan->client->phone_number ?? 'N/A' }}</div>
                                                 <div class="text-sm text-gray-500">{{ $loan->client->email ?? 'N/A' }}</div>
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
-                                                <div class="text-sm font-medium text-red-600">
-                                                    TZS {{ number_format($totalOutstanding, 2) }}
-                                                </div>
-                                                <div class="text-sm text-gray-500">
-                                                    {{ $outstandingCharges->count() }} charge(s)
-                                                </div>
+                                                @if($totalOutstanding > 0)
+                                                    <div class="text-sm font-medium text-red-600">
+                                                        TZS {{ number_format($totalOutstanding, 2) }}
+                                                    </div>
+                                                    <div class="text-sm text-gray-500">
+                                                        {{ $outstandingCharges->count() }} charge(s)
+                                                    </div>
+                                                @else
+                                                    <span class="text-sm text-gray-500">No pending charges</span>
+                                                @endif
+                                            </td>
+                                            <td class="px-6 py-4 whitespace-nowrap">
+                                                @if($overdueAmount > 0)
+                                                    <div class="text-sm font-medium text-red-600">
+                                                        TZS {{ number_format($overdueAmount, 2) }}
+                                                    </div>
+                                                @else
+                                                    <span class="text-sm text-gray-500">—</span>
+                                                @endif
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap">
                                                 @if($daysOverdue > 0)
@@ -88,9 +120,20 @@
                                                 @endif
                                             </td>
                                             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                                <div class="flex space-x-2">
+                                                <div class="flex flex-col space-y-2">
                                                     <a href="{{ route('loans.show', $loan) }}" class="text-blue-600 hover:text-blue-900">View Loan</a>
-                                                    <button onclick="openBulkPaymentModal({{ $loan->id }}, {{ $totalOutstanding }})" class="text-green-600 hover:text-green-900">Pay All</button>
+                                                    @if($totalOutstanding > 0)
+                                                        <button type="button" onclick="openBulkPaymentModal('{{ $loan->loan_number }}', {{ $totalOutstanding }})" class="text-left text-green-600 hover:text-green-900">
+                                                            Pay All Charges
+                                                        </button>
+                                                    @endif
+                                                    @if($outstandingCharges->isNotEmpty())
+                                                        @foreach($outstandingCharges as $charge)
+                                                            <a href="{{ route('loan-charges.show', $charge) }}" class="text-gray-600 hover:text-gray-900">
+                                                                View {{ ucfirst(str_replace('_', ' ', $charge->transaction_type)) }}
+                                                            </a>
+                                                        @endforeach
+                                                    @endif
                                                 </div>
                                             </td>
                                         </tr>
@@ -99,7 +142,6 @@
                             </table>
                         </div>
 
-                        <!-- Pagination -->
                         <div class="mt-6">
                             {{ $loans->links() }}
                         </div>
@@ -118,17 +160,17 @@
     </div>
 
     <!-- Bulk Payment Modal -->
-    <div id="bulkPaymentModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden">
+    <div id="bulkPaymentModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
         <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
             <div class="mt-3">
-                <h3 class="text-lg font-medium text-gray-900 mb-4">Process Bulk Payment</h3>
+                <h3 class="text-lg font-medium text-gray-900 mb-4">Pay All Outstanding Charges</h3>
                 <form id="bulkPaymentForm" method="POST">
                     @csrf
-                    @method('POST')
                     
                     <div class="mb-4">
                         <label class="block text-sm font-medium text-gray-700">Payment Amount</label>
-                        <input type="number" id="bulkPaymentAmount" name="payment_amount" step="0.01" min="0.01" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" required>
+                        <input type="number" id="bulkPaymentAmount" step="0.01" min="0.01" readonly
+                               class="mt-1 block w-full border-gray-300 rounded-md shadow-sm bg-gray-50 focus:ring-blue-500 focus:border-blue-500">
                     </div>
                     
                     <div class="mb-4">
@@ -165,10 +207,9 @@
     </div>
 
     <script>
-        function openBulkPaymentModal(loanId, maxAmount) {
-            document.getElementById('bulkPaymentAmount').max = maxAmount;
+        function openBulkPaymentModal(loanNumber, maxAmount) {
             document.getElementById('bulkPaymentAmount').value = maxAmount;
-            document.getElementById('bulkPaymentForm').action = `/loans/${loanId}/repayment`;
+            document.getElementById('bulkPaymentForm').action = '{{ route('loan-charges.pay-all', '__LOAN__') }}'.replace('__LOAN__', loanNumber);
             document.getElementById('bulkPaymentModal').classList.remove('hidden');
         }
 

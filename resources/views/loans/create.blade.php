@@ -9,9 +9,34 @@
                             Back to Loans
                         </a>
                     </div>
+
+                    {{-- Wizard Steps --}}
+                    <nav class="mb-8" aria-label="Loan application steps">
+                        <ol class="flex items-center w-full text-sm font-medium">
+                            @foreach([
+                                1 => 'Client & Terms',
+                                2 => 'Credit Score',
+                                3 => 'Fees & Summary',
+                                4 => 'Review',
+                            ] as $stepNum => $stepLabel)
+                                <li class="flex items-center {{ $stepNum < 4 ? 'flex-1' : '' }}">
+                                    <span class="wizard-step-indicator flex items-center justify-center w-8 h-8 rounded-full border-2 shrink-0 {{ $stepNum === 1 ? 'border-green-600 bg-green-600 text-white' : 'border-gray-300 text-gray-500' }}" data-step-indicator="{{ $stepNum }}">
+                                        {{ $stepNum }}
+                                    </span>
+                                    <span class="ml-2 hidden sm:inline {{ $stepNum === 1 ? 'text-green-700 font-semibold' : 'text-gray-500' }} wizard-step-label" data-step-label="{{ $stepNum }}">{{ $stepLabel }}</span>
+                                    @if($stepNum < 4)
+                                        <div class="flex-1 h-0.5 mx-3 bg-gray-200 wizard-step-line" data-step-line="{{ $stepNum }}"></div>
+                                    @endif
+                                </li>
+                            @endforeach
+                        </ol>
+                    </nav>
                     
                     <form method="POST" action="{{ route('loans.store') }}" id="loan_form" class="space-y-6">
                         @csrf
+
+                        {{-- Step 1: Client, product & loan terms --}}
+                        <div class="wizard-step space-y-6" data-step="1">
                         <!-- Client Selection -->
                         <div class="bg-gray-50 rounded-lg p-6">
                             <h3 class="text-lg font-semibold text-gray-900 mb-4">Client Information</h3>
@@ -215,7 +240,12 @@
                                 </div>
                             </div>
                         </div>
-                        
+                        </div>
+
+                        @include('loans.partials.create-credit-assessment')
+
+                        {{-- Step 3: Fees & summary --}}
+                        <div class="wizard-step hidden space-y-6" data-step="3">
                         <!-- Custom Charges -->
                         <div class="bg-amber-50 rounded-lg p-6 border border-amber-200" id="charges_section">
                             <h3 class="text-lg font-semibold text-gray-900 mb-4">Fees & Charges</h3>
@@ -336,8 +366,24 @@
                                     <span class="font-medium" id="detail_insurance">TZS 0</span>
                                 </div>
                             </div>
+                            </div>
                         </div>
-                        
+                        </div>
+
+                        {{-- Step 4: Review & submit --}}
+                        <div class="wizard-step hidden space-y-6" data-step="4">
+
+                        <div id="review_score_summary" class="hidden bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <h4 class="text-sm font-semibold text-blue-900 mb-2">Credit Assessment Summary</h4>
+                            <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-sm">
+                                <div><span class="text-gray-500">Score:</span> <span class="font-semibold" id="review_score">-</span></div>
+                                <div><span class="text-gray-500">Band:</span> <span class="font-semibold" id="review_band">-</span></div>
+                                <div><span class="text-gray-500">Requested:</span> <span class="font-semibold" id="review_requested_amount">-</span></div>
+                                <div><span class="text-gray-500">Recommended max:</span> <span class="font-semibold" id="review_max">-</span></div>
+                                <div><span class="text-gray-500">Status:</span> <span class="font-semibold" id="review_eligible">-</span></div>
+                            </div>
+                        </div>
+
                         <!-- Additional Information -->
                         <div class="bg-gray-50 rounded-lg p-6">
                             <h3 class="text-lg font-semibold text-gray-900 mb-4">Additional Information</h3>
@@ -383,18 +429,28 @@
                                 </div>
                             </div>
                         </div>
+                        </div>
                         
                         <!-- Hidden field for custom mode -->
                         <input type="hidden" name="custom_mode" id="custom_mode" value="{{ old('custom_mode', '0') }}">
                         
-                        <!-- Submit Buttons -->
-                        <div class="flex justify-end space-x-4">
-                            <a href="{{ route('loans.index') }}" class="bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg font-medium transition-colors">
-                                Cancel
-                            </a>
-                            <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition-colors">
-                                Create Loan Application
+                        <!-- Wizard Navigation -->
+                        <div class="flex justify-between items-center pt-4 border-t border-gray-200">
+                            <button type="button" id="wizard_back" class="hidden bg-gray-600 hover:bg-gray-700 text-white px-6 py-2 rounded-lg font-medium transition-colors">
+                                Back
                             </button>
+                            <div class="flex-1"></div>
+                            <div class="flex space-x-4">
+                                <a href="{{ route('loans.index') }}" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-6 py-2 rounded-lg font-medium transition-colors">
+                                    Cancel
+                                </a>
+                                <button type="button" id="wizard_next" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition-colors">
+                                    Next
+                                </button>
+                                <button type="submit" id="wizard_submit" class="hidden bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition-colors">
+                                    Create Loan Application
+                                </button>
+                            </div>
                         </div>
                     </form>
                 </div>
@@ -410,6 +466,300 @@
         // State
         let customMode = {{ old('custom_mode') ? 'true' : 'false' }};
         let selectedProduct = null;
+        let currentWizardStep = 1;
+        let clientScoreData = null;
+        let selectedClientUuid = null;
+        const clientScoreUrlTemplate = @json(route('loans.client-score', ['client' => 'CLIENT_UUID']));
+        const totalWizardSteps = 4;
+
+        // ===== WIZARD =====
+        function showWizardStep(step) {
+            currentWizardStep = step;
+            document.querySelectorAll('.wizard-step').forEach(el => {
+                el.classList.toggle('hidden', parseInt(el.dataset.step) !== step);
+            });
+
+            document.querySelectorAll('[data-step-indicator]').forEach(el => {
+                const s = parseInt(el.dataset.stepIndicator);
+                el.classList.remove('border-green-600', 'bg-green-600', 'text-white', 'border-gray-300', 'text-gray-500', 'bg-green-100', 'text-green-700');
+                if (s < step) {
+                    el.classList.add('border-green-600', 'bg-green-100', 'text-green-700');
+                } else if (s === step) {
+                    el.classList.add('border-green-600', 'bg-green-600', 'text-white');
+                } else {
+                    el.classList.add('border-gray-300', 'text-gray-500');
+                }
+            });
+
+            document.querySelectorAll('[data-step-label]').forEach(el => {
+                const s = parseInt(el.dataset.stepLabel);
+                el.classList.toggle('text-green-700', s === step);
+                el.classList.toggle('font-semibold', s === step);
+                el.classList.toggle('text-gray-500', s !== step);
+            });
+
+            document.querySelectorAll('[data-step-line]').forEach(el => {
+                const s = parseInt(el.dataset.stepLine);
+                el.classList.toggle('bg-green-600', s < step);
+                el.classList.toggle('bg-gray-200', s >= step);
+            });
+
+            document.getElementById('wizard_back').classList.toggle('hidden', step === 1);
+            document.getElementById('wizard_next').classList.toggle('hidden', step === totalWizardSteps);
+            document.getElementById('wizard_submit').classList.toggle('hidden', step !== totalWizardSteps);
+
+            if (step === 4 && clientScoreData) {
+                document.getElementById('review_score_summary').classList.remove('hidden');
+                document.getElementById('review_score').textContent = clientScoreData.score + '/100';
+                document.getElementById('review_band').textContent = clientScoreData.band_label;
+                document.getElementById('review_max').textContent = clientScoreData.recommended_max_loan !== null
+                    ? 'TZS ' + numberFormat(clientScoreData.recommended_max_loan) : 'N/A';
+                document.getElementById('review_eligible').textContent = clientScoreData.passes ? 'Eligible' : 'Not eligible';
+                const amt = parseFloat(document.getElementById('loan_amount').value) || 0;
+                document.getElementById('review_requested_amount').textContent = amt > 0 ? 'TZS ' + numberFormat(amt) : '—';
+            }
+
+            if (step === 2 && clientIdInput.value) {
+                updateTenureMonths();
+                fetchClientScore();
+            }
+        }
+
+        function validateWizardStep(step) {
+            if (step === 1) {
+                if (!clientIdInput.value) {
+                    alert('Please select a client before continuing.');
+                    return false;
+                }
+                const productId = document.getElementById('loan_product_id').value;
+                if (!productId) {
+                    alert('Please select a loan product.');
+                    return false;
+                }
+                if (!selectedProduct) {
+                    selectedProduct = loanProducts.find(p => p.id == productId);
+                }
+                const amount = parseFloat(document.getElementById('loan_amount').value) || 0;
+                if (amount <= 0) {
+                    alert('Please enter a valid loan amount.');
+                    return false;
+                }
+                const tenure = parseFloat(document.getElementById('loan_tenure_value').value) || 0;
+                if (tenure <= 0) {
+                    alert('Please enter a valid loan tenure.');
+                    return false;
+                }
+                updateTenureMonths();
+                if (selectedProduct && (amount < selectedProduct.min_amount || amount > selectedProduct.max_amount)) {
+                    alert('Loan amount must be between TZS ' + numberFormat(selectedProduct.min_amount) + ' and TZS ' + numberFormat(selectedProduct.max_amount) + '.');
+                    return false;
+                }
+                return true;
+            }
+            if (step === 2) {
+                if (!clientScoreData) {
+                    alert('Please wait for the credit assessment to complete.');
+                    return false;
+                }
+                if (!clientScoreData.passes) {
+                    alert('This client does not pass eligibility checks. Review the assessment before proceeding.');
+                    return false;
+                }
+                return true;
+            }
+            if (step === 3) {
+                const amount = parseFloat(document.getElementById('loan_amount').value) || 0;
+                if (clientScoreData && clientScoreData.recommended_max_loan !== null && amount > clientScoreData.recommended_max_loan) {
+                    alert('Loan amount exceeds the recommended limit of TZS ' + numberFormat(clientScoreData.recommended_max_loan) + '.');
+                    return false;
+                }
+                return true;
+            }
+            return true;
+        }
+
+        document.getElementById('wizard_next').addEventListener('click', function() {
+            if (!validateWizardStep(currentWizardStep)) return;
+            if (currentWizardStep < totalWizardSteps) {
+                showWizardStep(currentWizardStep + 1);
+            }
+        });
+
+        document.getElementById('wizard_back').addEventListener('click', function() {
+            if (currentWizardStep > 1) {
+                showWizardStep(currentWizardStep - 1);
+            }
+        });
+
+        async function fetchClientScore() {
+            const clientUuid = selectedClientUuid || clients.find(c => c.id == clientIdInput.value)?.uuid;
+            if (!clientUuid) return;
+
+            const loading = document.getElementById('score_loading');
+            const empty = document.getElementById('score_empty');
+            const results = document.getElementById('score_results');
+
+            loading.classList.remove('hidden');
+            empty.classList.add('hidden');
+            results.classList.add('hidden');
+
+            const params = new URLSearchParams();
+            const productId = document.getElementById('loan_product_id').value;
+            const amount = document.getElementById('loan_amount').value;
+            const tenureMonths = document.getElementById('loan_tenure_months').value;
+            const interestRate = document.getElementById('interest_rate').value;
+            const frequency = document.getElementById('repayment_frequency').value;
+            const calcMethod = document.getElementById('interest_calculation_method').value;
+            if (productId) params.set('loan_product_id', productId);
+            if (amount) params.set('loan_amount', amount);
+            if (tenureMonths) params.set('loan_tenure_months', tenureMonths);
+            if (interestRate !== '') params.set('interest_rate', interestRate);
+            if (frequency) params.set('repayment_frequency', frequency);
+            if (calcMethod) params.set('interest_calculation_method', calcMethod);
+
+            const url = clientScoreUrlTemplate.replace('CLIENT_UUID', clientUuid) + (params.toString() ? '?' + params.toString() : '');
+
+            try {
+                const response = await fetch(url, {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                if (!response.ok) throw new Error('Score request failed (' + response.status + ')');
+                clientScoreData = await response.json();
+                renderClientScore(clientScoreData);
+            } catch (e) {
+                empty.classList.remove('hidden');
+                empty.innerHTML = '<p class="text-red-600">Unable to load credit assessment. Please try again.</p>';
+            } finally {
+                loading.classList.add('hidden');
+            }
+        }
+
+        function renderClientScore(data) {
+            document.getElementById('score_empty').classList.add('hidden');
+            document.getElementById('score_results').classList.remove('hidden');
+
+            document.getElementById('score_value').textContent = data.score;
+            document.getElementById('score_band_label').textContent = data.band_label + ' (' + data.band + ')';
+            document.getElementById('score_client_name').textContent = clientSearch.value || 'Selected client';
+
+            document.getElementById('score_circle').className = 'flex items-center justify-center w-20 h-20 rounded-full border-4 text-2xl font-bold ' + scoreCircleClass(data.band);
+            document.getElementById('score_recommended_max').textContent = data.recommended_max_loan !== null
+                ? 'TZS ' + numberFormat(data.recommended_max_loan) : 'N/A';
+
+            renderAmountAssessment(data.amount_assessment);
+
+            const badge = document.getElementById('score_eligibility_badge');
+            badge.textContent = data.passes ? 'Eligible' : 'Not eligible';
+            badge.className = 'mt-1 inline-flex px-2 py-1 text-xs font-semibold rounded-full ' +
+                (data.passes ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800');
+
+            setFactorBar('repayment', data.factors.repayment_history);
+            setFactorBar('arrears', data.factors.arrears);
+            setFactorBar('profile', data.factors.profile);
+            setFactorBar('portfolio', data.factors.portfolio);
+
+            document.getElementById('hist_total').textContent = data.history.total_loans;
+            document.getElementById('hist_completed').textContent = data.history.completed_loans;
+            document.getElementById('hist_overdue').textContent = data.history.overdue_loans;
+            document.getElementById('hist_written_off').textContent = data.history.written_off_loans;
+
+            const flagsContainer = document.getElementById('score_flags_container');
+            const flagsList = document.getElementById('score_flags');
+            flagsList.innerHTML = '';
+            if (data.flags && data.flags.length > 0) {
+                flagsContainer.classList.remove('hidden');
+                data.flags.forEach(flag => {
+                    const colors = { danger: 'text-red-700 bg-red-50 border-red-200', warning: 'text-amber-700 bg-amber-50 border-amber-200', info: 'text-blue-700 bg-blue-50 border-blue-200' };
+                    const li = document.createElement('li');
+                    li.className = 'p-2 rounded border ' + (colors[flag.type] || colors.info);
+                    li.textContent = flag.message;
+                    flagsList.appendChild(li);
+                });
+            } else {
+                flagsContainer.classList.add('hidden');
+            }
+
+            const checksList = document.getElementById('score_checks');
+            checksList.innerHTML = '';
+            if (data.eligibility && data.eligibility.checks) {
+                document.getElementById('score_checks_container').classList.remove('hidden');
+                data.eligibility.checks.forEach(check => {
+                    const li = document.createElement('li');
+                    li.className = check.passed ? 'text-green-700' : 'text-red-700';
+                    li.textContent = (check.passed ? '✓ ' : '✗ ') + check.label + (check.message ? ' — ' + check.message : '');
+                    checksList.appendChild(li);
+                });
+            }
+
+            const reasonsList = document.getElementById('score_reasons');
+            reasonsList.innerHTML = '';
+            (data.reasons || []).forEach(reason => {
+                const li = document.createElement('li');
+                li.textContent = reason;
+                reasonsList.appendChild(li);
+            });
+        }
+
+        function renderAmountAssessment(assessment) {
+            const panel = document.getElementById('amount_assessment_panel');
+            if (!panel) return;
+            if (!assessment) {
+                panel.classList.add('hidden');
+                return;
+            }
+            panel.classList.remove('hidden');
+            const outlookColors = { good: 'text-green-700 bg-green-50 border-green-200', fair: 'text-amber-700 bg-amber-50 border-amber-200', poor: 'text-red-700 bg-red-50 border-red-200' };
+            const outlookLabels = { good: 'Good repayment outlook', fair: 'Moderate risk', poor: 'High repayment risk' };
+            document.getElementById('assess_requested').textContent = 'TZS ' + numberFormat(assessment.requested_amount);
+            document.getElementById('assess_recommended').textContent = 'TZS ' + numberFormat(assessment.recommended_max_loan);
+            document.getElementById('assess_affordable').textContent = assessment.affordable ? 'Yes — within limit' : 'No — exceeds limit';
+            document.getElementById('assess_affordable').className = 'font-semibold ' + (assessment.affordable ? 'text-green-700' : 'text-red-700');
+            const outlookEl = document.getElementById('assess_outlook');
+            outlookEl.textContent = outlookLabels[assessment.repayment_outlook] || assessment.repayment_outlook;
+            outlookEl.className = 'inline-flex px-2 py-1 text-xs font-semibold rounded-full border ' + (outlookColors[assessment.repayment_outlook] || outlookColors.fair);
+            document.getElementById('assess_monthly').textContent = assessment.estimated_monthly_payment > 0
+                ? '~TZS ' + numberFormat(assessment.estimated_monthly_payment) + '/installment' : '—';
+            document.getElementById('assess_max_monthly').textContent = assessment.max_monthly_payment > 0
+                ? 'TZS ' + numberFormat(assessment.max_monthly_payment) : 'N/A (no income on file)';
+            const alertsList = document.getElementById('amount_assessment_alerts');
+            alertsList.innerHTML = '';
+            (assessment.alerts || []).forEach(alert => {
+                const colors = { danger: 'text-red-700 bg-red-50 border-red-200', warning: 'text-amber-700 bg-amber-50 border-amber-200', info: 'text-blue-700 bg-blue-50 border-blue-200' };
+                const li = document.createElement('li');
+                li.className = 'p-3 rounded-lg border text-sm ' + (colors[alert.type] || colors.info);
+                li.textContent = alert.message;
+                alertsList.appendChild(li);
+            });
+        }
+
+        function setFactorBar(key, value) {
+            document.getElementById('factor_' + key).textContent = value + '/100';
+            document.getElementById('bar_' + key).style.width = value + '%';
+        }
+
+        function scoreCircleClass(band) {
+            const map = { excellent: 'border-green-600 text-green-700', good: 'border-blue-600 text-blue-700', fair: 'border-yellow-500 text-yellow-700', poor: 'border-orange-500 text-orange-700', critical: 'border-red-600 text-red-700' };
+            return map[band] || map.fair;
+        }
+
+        function resetClientScore() {
+            clientScoreData = null;
+            document.getElementById('score_results')?.classList.add('hidden');
+            document.getElementById('score_loading')?.classList.add('hidden');
+            const empty = document.getElementById('score_empty');
+            if (empty) {
+                empty.classList.remove('hidden');
+                empty.innerHTML = '<p>Complete Step 1 (client, product, and loan terms) then continue to run the credit assessment.</p>';
+            }
+        }
+
+        function scheduleScoreRefresh() {
+            if (currentWizardStep < 2) resetClientScore();
+            if (clientIdInput.value && currentWizardStep >= 2) {
+                clearTimeout(window.scoreRefreshTimer);
+                window.scoreRefreshTimer = setTimeout(fetchClientScore, 400);
+            }
+        }
         
         // ===== CLIENT SEARCH =====
         const clientSearch = document.getElementById('client_search');
@@ -444,7 +794,7 @@
             filteredClients.forEach(client => {
                 const displayName = `${client.first_name || ''} ${client.last_name || ''}${client.middle_name ? ' ' + client.middle_name : ''}`.trim();
                 const clientInfo = `${client.client_number || ''}${client.phone_number ? ' • ' + client.phone_number : ''}`;
-                html += `<div class="p-3 hover:bg-gray-100 cursor-pointer border-b border-gray-200 last:border-b-0 client-option" data-id="${client.id}" data-name="${displayName}">
+                html += `<div class="p-3 hover:bg-gray-100 cursor-pointer border-b border-gray-200 last:border-b-0 client-option" data-id="${client.id}" data-uuid="${client.uuid || ''}" data-name="${displayName}">
                     <div class="font-medium text-gray-900">${displayName}</div>
                     <div class="text-xs text-gray-500">${clientInfo}</div>
                 </div>`;
@@ -453,23 +803,27 @@
             clientDropdown.classList.remove('hidden');
             document.querySelectorAll('.client-option').forEach(option => {
                 option.addEventListener('click', function() {
-                    selectClient(this.getAttribute('data-id'), this.getAttribute('data-name'));
+                    selectClient(this.getAttribute('data-id'), this.getAttribute('data-name'), this.getAttribute('data-uuid'));
                 });
             });
         }
         
-        function selectClient(clientId, clientName) {
+        function selectClient(clientId, clientName, clientUuid) {
             clientIdInput.value = clientId;
+            selectedClientUuid = clientUuid || clients.find(c => c.id == clientId)?.uuid || null;
             clientSearch.value = clientName;
             selectedClientName.textContent = clientName;
             selectedClientDisplay.classList.remove('hidden');
             clientDropdown.classList.add('hidden');
+            resetClientScore();
         }
         
         function clearClientSelection() {
             clientIdInput.value = '';
+            selectedClientUuid = null;
             clientSearch.value = '';
             selectedClientDisplay.classList.add('hidden');
+            resetClientScore();
         }
         
         clientSearch.addEventListener('input', function() { filterClients(this.value); });
@@ -483,7 +837,17 @@
         @if(old('client_id'))
             const oldClient = clients.find(c => c.id == {{ old('client_id') }});
             if (oldClient) {
-                selectClient(oldClient.id, `${oldClient.first_name || ''} ${oldClient.last_name || ''}`.trim());
+                selectClient(oldClient.id, `${oldClient.first_name || ''} ${oldClient.last_name || ''}`.trim(), oldClient.uuid);
+            }
+        @endif
+
+        @if(request('client_id'))
+            const preselectedClient = clients.find(c => c.id == {{ (int) request('client_id') }});
+            if (preselectedClient) {
+                const preName = preselectedClient.client_type === 'individual'
+                    ? `${preselectedClient.first_name || ''} ${preselectedClient.last_name || ''}`.trim()
+                    : (preselectedClient.business_name || 'Client');
+                selectClient(preselectedClient.id, preName, preselectedClient.uuid);
             }
         @endif
         
@@ -540,6 +904,7 @@
             }
             
             updateSummary();
+            scheduleScoreRefresh();
         }
         
         customToggle.addEventListener('change', function() {
@@ -579,6 +944,7 @@
             }
             
             updateSummary();
+            scheduleScoreRefresh();
         });
         
         function applyProductDefaults(product) {
@@ -661,12 +1027,14 @@
             const freq = this.value;
             document.getElementById('repayment_frequency').value = freq;
             updateTenureForFrequency(freq, selectedProduct);
+            scheduleScoreRefresh();
         });
         
         // Interest calc method change (custom mode)
         document.getElementById('interest_calc_select').addEventListener('change', function() {
             document.getElementById('interest_calculation_method').value = this.value;
             updateSummary();
+            scheduleScoreRefresh();
         });
         
         // ===== TENURE CALCULATION =====
@@ -692,6 +1060,7 @@
         document.getElementById('loan_tenure_value').addEventListener('input', function() {
             updateTenureMonths();
             updateSummary();
+            scheduleScoreRefresh();
         });
         
         // ===== CUSTOM CHARGES =====
@@ -792,12 +1161,16 @@
             calculateProcessingFee();
             updateCustomCharge();
             updateSummary();
+            scheduleScoreRefresh();
         });
         document.getElementById('processing_fee').addEventListener('input', function() {
             calculateProcessingFee();
             updateSummary();
         });
-        document.getElementById('interest_rate').addEventListener('input', updateSummary);
+        document.getElementById('interest_rate').addEventListener('input', function() {
+            updateSummary();
+            scheduleScoreRefresh();
+        });
         document.getElementById('custom_repayment_amount').addEventListener('input', updateSummary);
         document.getElementById('insurance_fee').addEventListener('input', updateSummary);
         
@@ -890,6 +1263,11 @@
         
         // ===== FORM SUBMISSION =====
         document.getElementById('loan_form').addEventListener('submit', function(e) {
+            if (!validateWizardStep(3)) {
+                e.preventDefault();
+                showWizardStep(3);
+                return;
+            }
             updateTenureMonths();
             calculateProcessingFee();
             updateCustomCharge();
@@ -905,12 +1283,16 @@
         }
         
         // ===== INIT =====
+        showWizardStep(1);
+
         @if(old('loan_product_id'))
             document.getElementById('loan_product_id').dispatchEvent(new Event('change'));
         @endif
         
         if (customToggle.checked) {
             setCustomMode(true);
+        } else {
+            setCustomMode(false);
         }
         
         updateSummary();

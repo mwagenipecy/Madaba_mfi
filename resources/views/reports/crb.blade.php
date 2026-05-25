@@ -16,7 +16,7 @@
                             <li><strong>Contract:</strong> Latest active contract per customer only</li>
                             <li><strong>Individual:</strong> Clients matching those contracts (Customer Code)</li>
                             <li><strong>Subject Relation:</strong> Client relationships and references</li>
-                            <li><strong>Company:</strong> Organization and branch information</li>
+                            <li><strong>Company:</strong> Business/group clients matching those contracts (Customer Code)</li>
                         </ul>
                     </div>
                 </div>
@@ -164,11 +164,10 @@
                 <div>
                     <h4 class="font-medium text-gray-700 mb-2">Company Sheet</h4>
                     <ul class="text-sm text-gray-600 space-y-1">
-                        <li>• Organization details</li>
-                        <li>• Registration and contact information</li>
-                        <li>• Address and location data</li>
-                        <li>• Branch and client statistics</li>
-                        <li>• Total loans and outstanding amounts</li>
+                        <li>• Only business/group clients with an active contract in Contract sheet</li>
+                        <li>• Join key: Customer Code (<code>client_number</code>)</li>
+                        <li>• Company registration, address, and contact details</li>
+                        <li>• Exported as CSV</li>
                     </ul>
                 </div>
             </div>

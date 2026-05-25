@@ -130,8 +130,14 @@ class LoanRepaymentAllocator
             $loan->status = 'completed';
             $loan->closure_date = $loan->closure_date ?? now();
             $loan->closed_by = $loan->closed_by ?? auth()->id();
+            $loan->overdue_days = 0;
+            $loan->overdue_amount = 0;
         }
 
         $loan->save();
+
+        if ($outstandingFromSchedules > 0.01) {
+            app(LoanArrearsCalculator::class)->sync($loan);
+        }
     }
 }

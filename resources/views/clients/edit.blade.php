@@ -13,6 +13,9 @@
                     <form method="POST" action="{{ route('clients.update', $client) }}" enctype="multipart/form-data" class="space-y-6">
                         @csrf
                         @method('PUT')
+                        @php
+                            $meta = is_array($client->metadata) ? $client->metadata : [];
+                        @endphp
                         
                         <!-- Hidden fields for required data -->
                         <input type="hidden" name="organization_id" value="{{ $client->organization_id }}">
@@ -46,8 +49,8 @@
                         </div>
 
                         <!-- Personal Information -->
-                        <div class="bg-gray-50 rounded-lg p-6">
-                            <h2 class="text-lg font-semibold text-gray-900 mb-4">Personal Information</h2>
+                        <div class="bg-gray-50 rounded-lg p-6" id="individual-info" style="display: {{ old('client_type', $client->client_type) === 'individual' ? 'block' : 'none' }};">
+                            <h2 class="text-lg font-semibold text-gray-900 mb-4">Individual Client Information</h2>
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <div>
                                     <label for="first_name" class="block text-sm font-medium text-gray-700 mb-2">First Name</label>
@@ -117,6 +120,35 @@
                                         <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                                     @enderror
                                 </div>
+
+                                <div>
+                                    <label for="national_id" class="block text-sm font-medium text-gray-700 mb-2">National ID</label>
+                                    <input type="text" name="national_id" id="national_id"
+                                           value="{{ old('national_id', $client->national_id) }}"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                    @error('national_id')
+                                        <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                                    @enderror
+                                </div>
+
+                                <div>
+                                    <label for="passport_number" class="block text-sm font-medium text-gray-700 mb-2">Passport Number</label>
+                                    <input type="text" name="passport_number" id="passport_number"
+                                           value="{{ old('passport_number', $client->passport_number) }}"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                    @error('passport_number')
+                                        <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
+                                    @enderror
+                                </div>
+
+                                <div>
+                                    <label for="dependents" class="block text-sm font-medium text-gray-700 mb-2">Number of Dependents</label>
+                                    <input type="number" name="dependents" id="dependents" min="0"
+                                           value="{{ old('dependents', $client->dependents) }}"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                </div>
+
+                                @include('clients.partials.crb-individual-fields', ['meta' => $meta, 'client' => $client])
                             </div>
                         </div>
 
@@ -165,13 +197,15 @@
                                 </div>
 
                                 <div class="md:col-span-2">
-                                    <label for="business_description" class="block text-sm font-medium text-gray-700 mb-2">Business Description</label>
+                                    <label for="business_description" class="block text-sm font-medium text-gray-700 mb-2">Industry Sector / Business Description</label>
                                     <textarea name="business_description" id="business_description" rows="3"
                                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">{{ old('business_description', $client->business_description) }}</textarea>
                                     @error('business_description')
                                         <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                                     @enderror
                                 </div>
+
+                                @include('clients.partials.crb-company-fields', ['meta' => $meta])
                             </div>
                         </div>
 
@@ -210,7 +244,7 @@
                                 </div>
 
                                 <div>
-                                    <label for="physical_address" class="block text-sm font-medium text-gray-700 mb-2">Physical Address</label>
+                                    <label for="physical_address" class="block text-sm font-medium text-gray-700 mb-2">Main Address</label>
                                     <textarea name="physical_address" id="physical_address" rows="3"
                                               class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">{{ old('physical_address', $client->physical_address) }}</textarea>
                                     @error('physical_address')
@@ -219,7 +253,23 @@
                                 </div>
 
                                 <div>
-                                    <label for="city" class="block text-sm font-medium text-gray-700 mb-2">City</label>
+                                    <label for="street" class="block text-sm font-medium text-gray-700 mb-2">Street</label>
+                                    <input type="text" name="street" id="street"
+                                           value="{{ old('street', $meta['street'] ?? '') }}"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                           placeholder="Street name">
+                                </div>
+
+                                <div>
+                                    <label for="number_of_building" class="block text-sm font-medium text-gray-700 mb-2">Number of Building</label>
+                                    <input type="text" name="number_of_building" id="number_of_building"
+                                           value="{{ old('number_of_building', $meta['number_of_building'] ?? '') }}"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                           placeholder="Building number">
+                                </div>
+
+                                <div>
+                                    <label for="city" class="block text-sm font-medium text-gray-700 mb-2">City / District</label>
                                     <input type="text" name="city" id="city" 
                                            value="{{ old('city', $client->city) }}"
                                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
@@ -237,6 +287,36 @@
                                         <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                                     @enderror
                                 </div>
+
+                                <div>
+                                    <label for="country" class="block text-sm font-medium text-gray-700 mb-2">Country</label>
+                                    <input type="text" name="country" id="country"
+                                           value="{{ old('country', $client->country) }}"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                </div>
+
+                                <div>
+                                    <label for="postal_code" class="block text-sm font-medium text-gray-700 mb-2">Postal Code</label>
+                                    <input type="text" name="postal_code" id="postal_code"
+                                           value="{{ old('postal_code', $client->postal_code) }}"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
+                                </div>
+
+                                <div>
+                                    <label for="tax_identification_number" class="block text-sm font-medium text-gray-700 mb-2">Tax Identification Number</label>
+                                    <input type="text" name="tax_identification_number" id="tax_identification_number"
+                                           value="{{ old('tax_identification_number', $meta['tax_identification_number'] ?? '') }}"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                           placeholder="TIN">
+                                </div>
+
+                                <div>
+                                    <label for="web_page" class="block text-sm font-medium text-gray-700 mb-2">Web Page</label>
+                                    <input type="url" name="web_page" id="web_page"
+                                           value="{{ old('web_page', $meta['web_page'] ?? '') }}"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                                           placeholder="https://example.com">
+                                </div>
                             </div>
                         </div>
 
@@ -252,6 +332,13 @@
                                     @error('monthly_income')
                                         <p class="mt-1 text-sm text-red-600">{{ $message }}</p>
                                     @enderror
+                                </div>
+
+                                <div id="monthly_expenses_field" style="display: {{ old('client_type', $client->client_type) === 'individual' ? 'block' : 'none' }};">
+                                    <label for="monthly_expenses" class="block text-sm font-medium text-gray-700 mb-2">Monthly Expenses</label>
+                                    <input type="number" step="0.01" name="monthly_expenses" id="monthly_expenses"
+                                           value="{{ old('monthly_expenses', $meta['monthly_expenses'] ?? '') }}"
+                                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500">
                                 </div>
 
                                 <div>
@@ -503,26 +590,58 @@
     </div>
 
     <script>
-        // Show/hide business information based on client type
+        // Show/hide sections based on client type
         document.addEventListener('DOMContentLoaded', function() {
             const clientTypeRadios = document.querySelectorAll('input[name="client_type"]');
             const businessInfo = document.getElementById('business-info');
+            const individualInfo = document.getElementById('individual-info');
+            const monthlyExpensesField = document.getElementById('monthly_expenses_field');
             
-            function toggleBusinessInfo() {
+            function setSectionFieldsDisabled(section, disabled) {
+                if (!section) {
+                    return;
+                }
+
+                section.querySelectorAll('input, select, textarea').forEach(el => {
+                    el.disabled = disabled;
+                });
+            }
+
+            function setContainerFieldsDisabled(container, disabled) {
+                if (!container) {
+                    return;
+                }
+
+                container.querySelectorAll('input, select, textarea').forEach(el => {
+                    el.disabled = disabled;
+                });
+            }
+
+            function toggleClientSections() {
                 const selectedType = document.querySelector('input[name="client_type"]:checked');
-                if (selectedType && ['business', 'group'].includes(selectedType.value)) {
-                    businessInfo.style.display = 'block';
-                } else {
-                    businessInfo.style.display = 'none';
+                const type = selectedType ? selectedType.value : 'individual';
+
+                if (individualInfo) {
+                    individualInfo.style.display = type === 'individual' ? 'block' : 'none';
+                    setSectionFieldsDisabled(individualInfo, type !== 'individual');
+                }
+
+                if (businessInfo) {
+                    businessInfo.style.display = ['business', 'group'].includes(type) ? 'block' : 'none';
+                    setSectionFieldsDisabled(businessInfo, !['business', 'group'].includes(type));
+                }
+
+                if (monthlyExpensesField) {
+                    monthlyExpensesField.style.display = type === 'individual' ? 'block' : 'none';
+                    setContainerFieldsDisabled(monthlyExpensesField, type !== 'individual');
                 }
             }
             
             clientTypeRadios.forEach(radio => {
-                radio.addEventListener('change', toggleBusinessInfo);
+                radio.addEventListener('change', toggleClientSections);
             });
             
-            // Initial check
-            toggleBusinessInfo();
+            toggleClientSections();
         });
 
         // Track removed documents
