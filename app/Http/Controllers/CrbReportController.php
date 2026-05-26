@@ -14,27 +14,8 @@ use Carbon\Carbon;
 class CrbReportController extends Controller
 {
     use CrbReportSheetMethods;
-    /**
-     * Display the CRB report form.
-     */
-    public function index(Request $request)
-    {
-        $organizationId = auth()->user()->organization_id;
-        
-        // Get branches for filter
-        $branches = Branch::where('organization_id', $organizationId)
-            ->where('status', 'active')
-            ->orderBy('name')
-            ->get();
 
-        // Get clients for filter
-        $clients = Client::where('organization_id', $organizationId)
-            ->orderBy('first_name')
-            ->orderBy('last_name')
-            ->get();
-
-        return view('reports.crb', compact('branches', 'clients'));
-    }
+    public const PREVIEW_SHEET_TYPES = ['contract', 'individual', 'company'];
 
     private const SHEET_TYPES = [
         'contract' => ['method' => 'createContractSheet', 'label' => 'Contract'],
@@ -42,6 +23,54 @@ class CrbReportController extends Controller
         'subject-relation' => ['method' => 'createSubjectRelationSheet', 'label' => 'Subject_Relation'],
         'company' => ['method' => 'createCompanySheet', 'label' => 'Company'],
     ];
+
+    /**
+     * Display the CRB report form and preview data.
+     */
+    public function index(Request $request)
+    {
+        $organizationId = auth()->user()->organization_id;
+
+        $branches = Branch::where('organization_id', $organizationId)
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get();
+
+        $clients = Client::where('organization_id', $organizationId)
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->get();
+
+        $filters = [
+            'branch_id' => $request->get('branch_id'),
+            'client_id' => $request->get('client_id'),
+            'start_date' => $request->get('start_date'),
+            'end_date' => $request->get('end_date'),
+        ];
+
+        $sheetType = $request->get('sheet', 'contract');
+        if (!in_array($sheetType, self::PREVIEW_SHEET_TYPES, true)) {
+            $sheetType = 'contract';
+        }
+
+        $preview = null;
+        $dateError = null;
+
+        if ($filters['start_date'] && $filters['end_date'] && $filters['start_date'] > $filters['end_date']) {
+            $dateError = 'Start date must be before end date.';
+        } else {
+            $data = $this->getCrbData(
+                $organizationId,
+                $filters['branch_id'],
+                $filters['client_id'],
+                $filters['start_date'],
+                $filters['end_date']
+            );
+            $preview = $this->buildCrbPreview($sheetType, $data);
+        }
+
+        return view('reports.crb', compact('branches', 'clients', 'filters', 'sheetType', 'preview', 'dateError'));
+    }
 
     /**
      * Generate and download a single CRB CSV report.
@@ -91,11 +120,11 @@ class CrbReportController extends Controller
      */
     private function getCrbData($organizationId, $branchId = null, $clientId = null, $startDate = null, $endDate = null)
     {
-        // Base query for loans
-        $loansQuery = Loan::with(['client', 'loanProduct', 'branch', 'schedules'])
-            ->where('organization_id', $organizationId);
+        $loansQuery = Loan::with(['client', 'loanProduct', 'branch', 'schedules', 'pledgedCollateral'])
+            ->where('organization_id', $organizationId)
+            ->whereIn('status', $this->getCrbContractStatuses())
+            ->whereNotNull('disbursement_date');
 
-        // Apply filters
         if ($branchId) {
             $loansQuery->where('branch_id', $branchId);
         }
@@ -105,44 +134,33 @@ class CrbReportController extends Controller
         }
 
         if ($startDate) {
-            $loansQuery->where(function ($query) use ($startDate) {
-                $query->where('disbursement_date', '>=', Carbon::parse($startDate)->startOfDay())
-                    ->orWhere(function ($q) use ($startDate) {
-                        $q->whereNull('disbursement_date')
-                            ->where('created_at', '>=', Carbon::parse($startDate)->startOfDay());
-                    });
-            });
+            $loansQuery->where('disbursement_date', '>=', Carbon::parse($startDate)->startOfDay());
         }
 
         if ($endDate) {
-            $loansQuery->where(function ($query) use ($endDate) {
-                $query->where('disbursement_date', '<=', Carbon::parse($endDate)->endOfDay())
-                    ->orWhere(function ($q) use ($endDate) {
-                        $q->whereNull('disbursement_date')
-                            ->where('created_at', '<=', Carbon::parse($endDate)->endOfDay());
-                    });
-            });
+            $loansQuery->where('disbursement_date', '<=', Carbon::parse($endDate)->endOfDay());
         }
 
-        $loans = $loansQuery->get();
-        $contractLoans = $this->getLatestActiveContractsPerCustomer($loans);
+        $loans = $loansQuery->orderByDesc('disbursement_date')->get();
+        $contractLoans = $this->getCrbContractLoans($loans);
 
-        // Get clients data
+        $clientIds = $contractLoans->pluck('client_id')->filter()->unique();
+
         $clientsQuery = Client::where('organization_id', $organizationId);
-        
-        if ($branchId) {
-            $clientsQuery->whereHas('loans', function($query) use ($branchId) {
-                $query->where('branch_id', $branchId);
-            });
+
+        if ($clientIds->isNotEmpty()) {
+            $clientsQuery->whereIn('id', $clientIds);
+        } elseif ($clientId || $branchId) {
+            // Filters were applied but no reportable loans matched.
+            $clientsQuery->whereRaw('1 = 0');
         }
 
         if ($clientId) {
             $clientsQuery->where('id', $clientId);
         }
 
-        $clients = $clientsQuery->get();
+        $clients = $clientsQuery->orderBy('first_name')->orderBy('last_name')->get();
 
-        // Get organization data
         $organization = Organization::find($organizationId);
 
         return [
@@ -155,8 +173,7 @@ class CrbReportController extends Controller
                 'client_id' => $clientId,
                 'start_date' => $startDate,
                 'end_date' => $endDate,
-            ]
+            ],
         ];
     }
-
 }

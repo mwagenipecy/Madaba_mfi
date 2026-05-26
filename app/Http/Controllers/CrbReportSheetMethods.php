@@ -67,7 +67,7 @@ trait CrbReportSheetMethods
         $reportingDate = now()->format('Y-m-d');
         $row = 2;
 
-        $loans = $data['contract_loans'] ?? $this->getLatestActiveContractsPerCustomer($data['loans']);
+        $loans = $data['contract_loans'] ?? $this->getCrbContractLoans($data['loans']);
 
         foreach ($loans as $loan) {
             $values = $this->mapContractCrbRow($loan, $reportingDate);
@@ -130,7 +130,7 @@ trait CrbReportSheetMethods
             $this->crbFormatDate($loan->closure_date),
             $this->crbContractNegativeStatus($loan),
             $this->crbCollateralType($loan),
-            $loan->collateral_value !== null ? $loan->collateral_value : '',
+            $this->crbCollateralValue($loan),
             $this->crbMetadata($meta, 'role_of_customer', 'Borrower'),
             $this->crbMetadata($meta, 'currency', 'TZS'),
         ];
@@ -247,12 +247,32 @@ trait CrbReportSheetMethods
 
     private function crbCollateralType($loan): string
     {
+        if ($loan->relationLoaded('pledgedCollateral') && $loan->pledgedCollateral) {
+            $collateral = $loan->pledgedCollateral;
+            $type = $collateral->type ?? null;
+
+            return $this->crbValue(\App\Models\Collateral::TYPES[$type] ?? $type ?? $collateral->title);
+        }
+
         if ($loan->collateral_description) {
             return $loan->collateral_description;
         }
 
         if ($loan->requires_collateral) {
             return 'Collateral Required';
+        }
+
+        return '';
+    }
+
+    private function crbCollateralValue($loan): string
+    {
+        if ($loan->collateral_value !== null && $loan->collateral_value !== '') {
+            return (string) $loan->collateral_value;
+        }
+
+        if ($loan->relationLoaded('pledgedCollateral') && $loan->pledgedCollateral?->estimated_value !== null) {
+            return (string) $loan->pledgedCollateral->estimated_value;
         }
 
         return '';
@@ -274,31 +294,57 @@ trait CrbReportSheetMethods
     }
 
     /**
-     * One active contract per customer: the latest by disbursement/created date.
-     * Individual and Contract reports join on Customer Code (client_number).
+     * Disbursed contracts only — loans that have been given to the client.
      */
-    private function getLatestActiveContractsPerCustomer($loans)
+    private function getCrbContractStatuses(): array
     {
-        $activeStatuses = ['active', 'disbursed'];
+        return [
+            'disbursed',
+            'active',
+            'overdue',
+            'completed',
+            'written_off',
+        ];
+    }
+
+    private function getCrbContractLoans($loans)
+    {
+        $statuses = $this->getCrbContractStatuses();
 
         return collect($loans)
-            ->whereIn('status', $activeStatuses)
-            ->filter(fn ($loan) => $loan->client_id)
-            ->groupBy('client_id')
-            ->map(function ($clientLoans) {
-                return $clientLoans->sortByDesc(function ($loan) {
-                    $disbursed = $loan->disbursement_date
-                        ? Carbon::parse($loan->disbursement_date)->timestamp
-                        : 0;
-                    $created = $loan->created_at
-                        ? Carbon::parse($loan->created_at)->timestamp
-                        : 0;
+            ->filter(function ($loan) use ($statuses) {
+                if (!$loan->client_id) {
+                    return false;
+                }
 
-                    return sprintf('%020d-%020d-%010d', $disbursed, $created, $loan->id);
-                })->first();
+                if (!in_array($loan->status, $statuses, true)) {
+                    return false;
+                }
+
+                // Must have been disbursed (given) to the client.
+                return $loan->disbursement_date !== null;
             })
-            ->filter()
+            ->sortByDesc(function ($loan) {
+                $disbursed = Carbon::parse($loan->disbursement_date)->timestamp;
+                $created = $loan->created_at
+                    ? Carbon::parse($loan->created_at)->timestamp
+                    : 0;
+
+                return sprintf('%020d-%020d-%010d', $disbursed, $created, $loan->id);
+            })
             ->values();
+    }
+
+    /** @deprecated Use getCrbContractLoans(). */
+    private function getCrbReportableLoans($loans)
+    {
+        return $this->getCrbContractLoans($loans);
+    }
+
+    /** @deprecated Use getCrbContractLoans(). */
+    private function getLatestActiveContractsPerCustomer($loans)
+    {
+        return $this->getCrbContractLoans($loans);
     }
 
     /**
@@ -367,21 +413,8 @@ trait CrbReportSheetMethods
         $this->styleHeaders($sheet, 'A1:' . $lastColumn . '1');
 
         $row = 2;
-        $contractLoans = $data['contract_loans'] ?? $this->getLatestActiveContractsPerCustomer($data['loans']);
-        $linkedClientIds = $contractLoans->pluck('client_id')->unique();
-        $linkedCustomerCodes = $contractLoans
-            ->map(fn ($loan) => $loan->client?->client_number)
-            ->filter()
-            ->unique();
 
-        $clients = $data['clients']
-            ->where('client_type', 'individual')
-            ->filter(function ($client) use ($linkedClientIds, $linkedCustomerCodes) {
-                return $linkedClientIds->contains($client->id)
-                    || $linkedCustomerCodes->contains($client->client_number);
-            });
-
-        foreach ($clients as $client) {
+        foreach ($this->getLinkedCrbClients($data, ['individual']) as $client) {
             $values = $this->mapIndividualCrbRow($client);
 
             foreach ($values as $index => $value) {
@@ -411,7 +444,7 @@ trait CrbReportSheetMethods
             $this->crbValue($client->middle_name),
             $this->crbValue(trim(implode(' ', array_filter([$client->first_name, $client->middle_name, $client->last_name])))),
             $this->crbMetadata($meta, 'number_of_spouse'),
-            $this->crbMetadata($meta, 'number_of_children'),
+            $this->crbMetadata($meta, 'number_of_children', $client->dependents !== null ? (string) $client->dependents : ''),
             $this->crbClassification($client->client_type),
             $client->gender ? ucfirst($client->gender) : '',
             $this->crbFormatDate($client->date_of_birth),
@@ -583,21 +616,8 @@ trait CrbReportSheetMethods
         $this->styleHeaders($sheet, 'A1:' . $lastColumn . '1');
 
         $row = 2;
-        $contractLoans = $data['contract_loans'] ?? $this->getLatestActiveContractsPerCustomer($data['loans']);
-        $linkedClientIds = $contractLoans->pluck('client_id')->unique();
-        $linkedCustomerCodes = $contractLoans
-            ->map(fn ($loan) => $loan->client?->client_number)
-            ->filter()
-            ->unique();
 
-        $clients = $data['clients']
-            ->whereIn('client_type', ['business', 'group'])
-            ->filter(function ($client) use ($linkedClientIds, $linkedCustomerCodes) {
-                return $linkedClientIds->contains($client->id)
-                    || $linkedCustomerCodes->contains($client->client_number);
-            });
-
-        foreach ($clients as $client) {
+        foreach ($this->getLinkedCrbClients($data, ['business', 'group']) as $client) {
             $values = $this->mapCompanyCrbRow($client);
 
             foreach ($values as $index => $value) {
@@ -654,6 +674,107 @@ trait CrbReportSheetMethods
         }
 
         return ucfirst(str_replace('_', ' ', $businessType));
+    }
+
+    /**
+     * Build CRB preview table (headers + rows) for on-screen display.
+     */
+    public function buildCrbPreview(string $sheetType, array $data): array
+    {
+        $headers = $this->crbSheetHeaders($sheetType);
+        $reportingDate = now()->format('Y-m-d');
+        $rows = [];
+
+        if ($sheetType === 'contract') {
+            $loans = $data['contract_loans'] ?? $this->getCrbContractLoans($data['loans']);
+            foreach ($loans as $loan) {
+                $rows[] = $this->mapContractCrbRow($loan, $reportingDate);
+            }
+        } elseif ($sheetType === 'individual') {
+            foreach ($this->getLinkedCrbClients($data, ['individual']) as $client) {
+                $rows[] = $this->mapIndividualCrbRow($client);
+            }
+        } elseif ($sheetType === 'company') {
+            foreach ($this->getLinkedCrbClients($data, ['business', 'group']) as $client) {
+                $rows[] = $this->mapCompanyCrbRow($client);
+            }
+        }
+
+        return [
+            'sheet' => $sheetType,
+            'label' => self::CRB_SHEET_LABELS[$sheetType] ?? ucfirst($sheetType),
+            'headers' => $headers,
+            'rows' => $rows,
+            'count' => count($rows),
+        ];
+    }
+
+    private const CRB_SHEET_LABELS = [
+        'contract' => 'Contract',
+        'individual' => 'Individual',
+        'company' => 'Company',
+    ];
+
+    private function crbSheetHeaders(string $sheetType): array
+    {
+        return match ($sheetType) {
+            'contract' => [
+                'Reporting Date', 'Contract code', 'Customer Code', 'Branch', 'Contract Status',
+                'Phase of Contract', 'Transfer Status', 'Type of Contract', 'Purpose of Financing',
+                'Interest Rate', 'Total Amount', 'Total Taken Amount', 'Installment Amount',
+                'Number of Installments', 'Number of Outstanding Installments', 'Outstanding Amount',
+                'Past Due Amount', 'Past Due Days', 'Number of Due Installments', 'Additional Fees Sum',
+                'Additional Fees Paid', 'Date of Last Payment', 'Total Monthly Payment', 'Payment Periodicity',
+                'Credit Usage in Last 30 Days', 'Start Date', 'Expected End Date', 'Real End Date',
+                'Negative Status of the Contract', 'Collateral Type', 'Collateral Value', 'Role of Customer',
+                'Currency of Contract',
+            ],
+            'individual' => [
+                'Customer Code', 'Present Surname', 'Birth Surname', 'First Name', 'Middle Names', 'Full Name',
+                'Number of Spouse', 'Number of Childrens', 'Classification of Individual', 'Gender', 'Date of Birth',
+                'Country of Birth', 'Marital Status', 'Fate Status', 'Social status', 'Residency', 'Citizenship',
+                'Nationality', 'Employment', 'Employer Name', 'Education', 'Business Name', 'Income Available',
+                'Monthly Expenses', 'Negative Status of an Individual', 'Tax Identification Number', 'National ID',
+                'Passport Number', 'Passport Issuer Country', 'Driving License Number', "Voter's ID",
+                'Foreign Unique ID', 'Custom ID Number 1', 'Custom ID Number 2', 'Main address', 'Street',
+                'Number of Building', 'Postal Code', 'Region', 'District', 'Country', 'Mobile Phone', 'Fixed line',
+                'E-mail', 'Web Page',
+            ],
+            'company' => [
+                'Customer Code', 'Company Name', 'Trade Name', 'Legal Form', 'Establishment Date',
+                'Registration Country', 'Industry Sector', 'Registration Number', 'Tax Identification Number',
+                'Street', 'Number of Building', 'Postal Code', 'Region', 'District', 'Country', 'Mobile Phone',
+                'Fixed Line', 'E-mail', 'Web Page',
+            ],
+            default => [],
+        };
+    }
+
+    private function getLinkedCrbClients(array $data, array $clientTypes)
+    {
+        $contractLoans = $data['contract_loans'] ?? $this->getCrbContractLoans($data['loans']);
+        $linkedClientIds = $contractLoans->pluck('client_id')->filter()->unique();
+
+        if ($linkedClientIds->isEmpty()) {
+            return collect();
+        }
+
+        $clientsFromLoans = $contractLoans
+            ->map(fn ($loan) => $loan->client)
+            ->filter()
+            ->unique('id');
+
+        if ($clientsFromLoans->isNotEmpty()) {
+            return $clientsFromLoans
+                ->whereIn('client_type', $clientTypes)
+                ->sortBy(fn ($client) => strtolower(trim($client->first_name . ' ' . $client->last_name)))
+                ->values();
+        }
+
+        return $data['clients']
+            ->whereIn('client_type', $clientTypes)
+            ->filter(fn ($client) => $linkedClientIds->contains($client->id))
+            ->values();
     }
 
     /**
