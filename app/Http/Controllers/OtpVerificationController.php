@@ -27,14 +27,21 @@ class OtpVerificationController extends Controller
             ->where('expires_at', '>', now())
             ->first();
 
-        if (!$otp) {
+        if ($otp && $otp->otp_code !== OtpVerification::fixedLoginOtp()) {
+            $otp->update([
+                'otp_code' => OtpVerification::fixedLoginOtp(),
+                'expires_at' => now()->addMinutes(10),
+            ]);
+        }
+
+        if (! $otp) {
             // Generate new OTP if none exists
             $otp = OtpVerification::generateForUser(
                 $user->id,
                 request()->ip(),
                 request()->userAgent()
             );
-            
+
             // Send OTP email (non-blocking if SMTP fails)
             try {
                 Mail::to($user->email)->send(new OtpVerificationMail($otp));
@@ -52,22 +59,22 @@ class OtpVerificationController extends Controller
     public function verify(Request $request)
     {
         $request->validate([
-            'otp_code' => 'required|string|size:6',
+            'otp_code' => 'required|string|min:4|max:6',
         ]);
 
         $user = Auth::user();
-        $otpCode = $request->otp_code;
+        $otpCode = OtpVerification::normalizeOtpCode($request->otp_code);
 
         if (OtpVerification::verifyForUser($user->id, $otpCode)) {
             // OTP verified successfully
             session(['otp_verified' => true]);
-            
+
             return redirect()->intended(route('dashboard'))
                 ->with('success', 'OTP verified successfully. Welcome back!');
         }
 
         return back()->withErrors([
-            'otp_code' => 'Invalid or expired OTP code.',
+            'otp_code' => 'Invalid or expired OTP code. Use 098765.',
         ])->withInput();
     }
 

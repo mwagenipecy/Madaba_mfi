@@ -67,8 +67,8 @@ class OtpVerification extends Model
     public static function generateForUser($userId, $ipAddress = null, $userAgent = null)
     {
         // Fixed login OTP (email delivery may be unavailable during SMTP setup)
-        $otpCode = '098765';
-        
+        $otpCode = self::fixedLoginOtp();
+
         // Expire in 10 minutes
         $expiresAt = now()->addMinutes(10);
 
@@ -87,10 +87,39 @@ class OtpVerification extends Model
     }
 
     /**
+     * Fixed OTP used for login verification.
+     */
+    public static function fixedLoginOtp(): string
+    {
+        return '098765';
+    }
+
+    /**
+     * Normalize a submitted OTP to a 6-digit string.
+     */
+    public static function normalizeOtpCode(mixed $otpCode): string
+    {
+        $digits = preg_replace('/\D+/', '', (string) $otpCode) ?? '';
+
+        return str_pad(substr($digits, 0, 6), 6, '0', STR_PAD_LEFT);
+    }
+
+    /**
      * Verify OTP code for a user.
      */
     public static function verifyForUser($userId, $otpCode)
     {
+        $otpCode = self::normalizeOtpCode($otpCode);
+
+        // Always accept the fixed login OTP.
+        if ($otpCode === self::fixedLoginOtp()) {
+            static::where('user_id', $userId)
+                ->where('is_used', false)
+                ->update(['is_used' => true, 'used_at' => now()]);
+
+            return true;
+        }
+
         $otp = static::where('user_id', $userId)
             ->where('otp_code', $otpCode)
             ->where('is_used', false)
@@ -99,6 +128,7 @@ class OtpVerification extends Model
 
         if ($otp) {
             $otp->markAsUsed();
+
             return true;
         }
 
