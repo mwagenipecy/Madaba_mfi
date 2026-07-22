@@ -66,7 +66,8 @@ class OtpVerification extends Model
      */
     public static function generateForUser($userId, $ipAddress = null, $userAgent = null)
     {
-        $otpCode = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        // Fixed login OTP (email delivery may be unavailable during SMTP setup)
+        $otpCode = '098765';
         
         // Expire in 10 minutes
         $expiresAt = now()->addMinutes(10);
