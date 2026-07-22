@@ -35,4 +35,11 @@ return [
         ],
     ],
 
+    'briq' => [
+        'api_key' => env('BRIQ_API_KEY'),
+        'base_url' => env('BRIQ_BASE_URL', 'https://karibu.briq.tz'),
+        'default_sender' => env('BRIQ_DEFAULT_SENDER', 'BRIQ'),
+        'app_id' => env('BRIQ_APP_ID'),
+    ],
+
 ];

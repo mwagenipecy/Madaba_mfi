@@ -34,6 +34,13 @@
                      'icon' => 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4'],
                     ['type' => 'link', 'label' => 'Payments', 'route' => 'payments.index',
                      'icon' => 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z'],
+                    ['type' => 'group', 'label' => 'SMS Messaging',
+                     'icon' => 'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z',
+                     'children' => [
+                        ['label' => 'Bulk SMS', 'route' => 'sms.index'],
+                        ['label' => 'Manual SMS', 'route' => 'sms.manual'],
+                        ['label' => 'SMS Reports', 'route' => 'sms.reports'],
+                     ]],
                 ],
             ],
             [

@@ -248,6 +248,15 @@ Route::middleware([
         Route::post('/open', [App\Http\Controllers\DailyTillController::class, 'openDay'])->name('open');
         Route::post('/close', [App\Http\Controllers\DailyTillController::class, 'closeDay'])->name('close');
     });
+
+    // SMS messaging (Briq)
+    Route::prefix('sms')->name('sms.')->group(function () {
+        Route::get('/', [App\Http\Controllers\SmsController::class, 'index'])->name('index');
+        Route::post('/send-bulk', [App\Http\Controllers\SmsController::class, 'sendBulk'])->name('send-bulk');
+        Route::get('/manual', [App\Http\Controllers\SmsController::class, 'manual'])->name('manual');
+        Route::post('/send-manual', [App\Http\Controllers\SmsController::class, 'sendManual'])->name('send-manual');
+        Route::get('/reports', [App\Http\Controllers\SmsController::class, 'reports'])->name('reports');
+    });
     
     // Organization settings (admin + super_admin)
     Route::middleware(['org_admin'])->prefix('organization-settings')->name('organization-settings.')->group(function () {

@@ -13,9 +13,13 @@ use App\Models\User;
 use App\Models\Organization;
 use App\Services\LoanRepaymentAllocator;
 use App\Services\ClientScoringService;
+use App\Services\SmsCampaignService;
 use App\Models\Account;
 use App\Models\SystemLog;
+use App\Mail\LoanApprovedMail;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class LoansController extends Controller
 {
@@ -607,8 +611,70 @@ class LoansController extends Controller
             ['approved_amount' => $approvedAmount, 'approval_notes' => $request->approval_notes]
         );
 
+        $smsStatus = null;
+        $emailStatus = null;
+
+        try {
+            $loan->refresh();
+            $loan->loadMissing(['client.branch', 'branch']);
+
+            if ($loan->client) {
+                $campaigns = app(SmsCampaignService::class);
+                $messageBody = $campaigns->loanApprovedMessage($loan->client, $loan);
+
+                $smsResult = $campaigns->notifyClient(
+                    $loan->client,
+                    $messageBody,
+                    auth()->user(),
+                    $loan,
+                    'loan_approved',
+                    'system'
+                );
+                $smsStatus = $smsResult['status'];
+
+                if (! empty($loan->client->email)) {
+                    try {
+                        Mail::to($loan->client->email)->send(
+                            new LoanApprovedMail($loan->client, $loan, $messageBody)
+                        );
+                        $emailStatus = 'sent';
+                    } catch (\Throwable $mailException) {
+                        Log::warning('Loan approval email failed', [
+                            'loan_id' => $loan->id,
+                            'email' => $loan->client->email,
+                            'error' => $mailException->getMessage(),
+                        ]);
+                        $emailStatus = 'failed';
+                    }
+                } else {
+                    $emailStatus = 'skipped';
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Loan approval notification failed', [
+                'loan_id' => $loan->id,
+                'error' => $e->getMessage(),
+            ]);
+            $smsStatus = $smsStatus ?? 'failed';
+        }
+
+        $success = 'Loan has been approved, payment schedule saved, and loan is now active.';
+        if ($smsStatus === 'sent') {
+            $success .= ' Approval SMS sent.';
+        } elseif ($smsStatus === 'failed') {
+            $success .= ' Approval SMS could not be sent.';
+        }
+
+        if ($emailStatus === 'sent') {
+            $success .= ' Approval email sent.';
+        } elseif ($emailStatus === 'failed') {
+            $success .= ' Approval email could not be sent.';
+        } elseif ($emailStatus === 'skipped') {
+            $success .= ' No client email on file.';
+        }
+
         return redirect()->route('loans.show', $loan)
-            ->with('success', 'Loan has been approved, payment schedule saved, and loan is now active.');
+            ->with('success', $success);
     }
 
     /**

@@ -6,8 +6,10 @@ use App\Models\Client;
 use App\Models\Organization;
 use App\Models\Branch;
 use App\Models\SystemLog;
+use App\Services\SmsCampaignService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class ClientsController extends Controller
@@ -360,8 +362,36 @@ class ClientsController extends Controller
             ['client_type' => $client->client_type, 'organization_id' => $client->organization_id]
         );
 
+        $smsStatus = null;
+        try {
+            $client->loadMissing('branch');
+            $campaigns = app(SmsCampaignService::class);
+            $smsResult = $campaigns->notifyClient(
+                $client,
+                $campaigns->clientWelcomeMessage($client),
+                Auth::user(),
+                null,
+                'client_created',
+                'system'
+            );
+            $smsStatus = $smsResult['status'];
+        } catch (\Throwable $e) {
+            Log::warning('Client welcome SMS failed', [
+                'client_id' => $client->id,
+                'error' => $e->getMessage(),
+            ]);
+            $smsStatus = 'failed';
+        }
+
+        $success = 'Client created successfully. KYC verification is pending.';
+        if ($smsStatus === 'sent') {
+            $success .= ' Welcome SMS sent.';
+        } elseif ($smsStatus === 'failed') {
+            $success .= ' Welcome SMS could not be sent.';
+        }
+
         return redirect()->route('clients.show', $client)
-            ->with('success', 'Client created successfully. KYC verification is pending.');
+            ->with('success', $success);
     }
 
     /**
