@@ -192,7 +192,8 @@ class LoansController extends Controller
             'loan_amount' => 'required|numeric|min:0.01',
             'interest_rate' => 'nullable|numeric|min:0|max:100',
             'loan_tenure_value' => 'nullable|numeric|min:1',
-            'loan_tenure_months' => 'required|numeric|min:0.01',
+            'loan_tenure_months' => 'nullable|numeric|min:0.01',
+            'tenure_unit' => 'nullable|in:days,weeks,months,quarters',
             'processing_fee' => 'nullable|numeric|min:0',
             'processing_fee_amount' => 'nullable|numeric|min:0',
             'insurance_fee' => 'nullable|numeric|min:0',
@@ -259,7 +260,28 @@ class LoansController extends Controller
         }
 
         // Get tenure value - JavaScript converts it to months before submission
-        $tenureInMonths = $request->loan_tenure_months ?? $loanProduct->min_tenure_months;
+        $tenureInMonths = $request->loan_tenure_months;
+        if (! $tenureInMonths || (float) $tenureInMonths <= 0) {
+            $tenureValue = (float) ($request->loan_tenure_value ?: 0);
+            $tenureUnit = $request->tenure_unit ?: 'months';
+
+            $tenureInMonths = match ($tenureUnit) {
+                'days' => $tenureValue / 30,
+                'weeks' => $tenureValue / 4,
+                'quarters' => $tenureValue * 3,
+                default => $tenureValue,
+            };
+
+            if ($tenureInMonths <= 0) {
+                $tenureInMonths = $loanProduct->min_tenure_months;
+            }
+        }
+
+        if ((float) $tenureInMonths <= 0) {
+            return redirect()->back()
+                ->withErrors(['loan_tenure_value' => 'Please enter a valid loan tenure.'])
+                ->withInput();
+        }
         
         // Calculate processing fee amount
         $processingFeeAmount = 0;
@@ -302,7 +324,7 @@ class LoansController extends Controller
         }
 
         $loanTermsForScore = [
-            'tenure_months' => (float) ($request->loan_tenure_months ?? $loanProduct->min_tenure_months),
+            'tenure_months' => (float) $tenureInMonths,
             'interest_rate' => (float) ($request->interest_rate ?? $loanProduct->interest_rate),
             'repayment_frequency' => $request->input('repayment_frequency', $loanProduct->repayment_frequency ?? 'monthly'),
             'interest_calculation_method' => $request->input('interest_calculation_method', $loanProduct->interest_calculation_method ?? 'flat'),

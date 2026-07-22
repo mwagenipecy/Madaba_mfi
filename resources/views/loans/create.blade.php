@@ -32,7 +32,7 @@
                         </ol>
                     </nav>
                     
-                    <form method="POST" action="{{ route('loans.store') }}" id="loan_form" class="space-y-6">
+                    <form method="POST" action="{{ route('loans.store') }}" id="loan_form" class="space-y-6" novalidate>
                         @csrf
 
                         {{-- Step 1: Client, product & loan terms --}}
@@ -515,15 +515,32 @@
             }
         }
 
+        function focusField(fieldId) {
+            const field = document.getElementById(fieldId);
+            if (!field) return;
+            setTimeout(() => {
+                try {
+                    field.focus({ preventScroll: false });
+                    field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } catch (e) {
+                    // Ignore focus errors on unsupported browsers
+                }
+            }, 50);
+        }
+
         function validateWizardStep(step) {
             if (step === 1) {
                 if (!clientIdInput.value) {
                     alert('Please select a client before continuing.');
+                    showWizardStep(1);
+                    focusField('client_search');
                     return false;
                 }
                 const productId = document.getElementById('loan_product_id').value;
                 if (!productId) {
                     alert('Please select a loan product.');
+                    showWizardStep(1);
+                    focusField('loan_product_id');
                     return false;
                 }
                 if (!selectedProduct) {
@@ -532,16 +549,23 @@
                 const amount = parseFloat(document.getElementById('loan_amount').value) || 0;
                 if (amount <= 0) {
                     alert('Please enter a valid loan amount.');
-                    return false;
-                }
-                const tenure = parseFloat(document.getElementById('loan_tenure_value').value) || 0;
-                if (tenure <= 0) {
-                    alert('Please enter a valid loan tenure.');
+                    showWizardStep(1);
+                    focusField('loan_amount');
                     return false;
                 }
                 updateTenureMonths();
+                const tenure = parseFloat(document.getElementById('loan_tenure_value').value) || 0;
+                const tenureMonths = parseFloat(document.getElementById('loan_tenure_months').value) || 0;
+                if (tenure <= 0 || tenureMonths <= 0) {
+                    alert('Please enter a valid loan tenure.');
+                    showWizardStep(1);
+                    focusField('loan_tenure_value');
+                    return false;
+                }
                 if (selectedProduct && (amount < selectedProduct.min_amount || amount > selectedProduct.max_amount)) {
                     alert('Loan amount must be between TZS ' + numberFormat(selectedProduct.min_amount) + ' and TZS ' + numberFormat(selectedProduct.max_amount) + '.');
+                    showWizardStep(1);
+                    focusField('loan_amount');
                     return false;
                 }
                 return true;
@@ -1334,12 +1358,16 @@
         
         // ===== FORM SUBMISSION =====
         document.getElementById('loan_form').addEventListener('submit', function(e) {
-            if (!validateWizardStep(3)) {
+            updateTenureMonths();
+
+            // Re-validate step 1 fields even when submitting from the final wizard step.
+            // Native HTML5 validation is disabled (novalidate) because hidden wizard fields
+            // like loan_tenure_value cannot be focused by the browser.
+            if (!validateWizardStep(1)) {
                 e.preventDefault();
-                showWizardStep(3);
                 return;
             }
-            updateTenureMonths();
+
             calculateProcessingFee();
             updateCustomCharge();
         });
