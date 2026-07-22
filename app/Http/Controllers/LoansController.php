@@ -1009,36 +1009,56 @@ class LoansController extends Controller
         
         // Prepare schedule adjustment data
         $frequency = $loan->repayment_frequency ?? 'monthly';
-        $tenureMonths = $loan->loan_tenure_months;
-        
+        $tenureMonths = (float) ($loan->loan_tenure_months ?: 0);
+
+        $currentValue = match ($frequency) {
+            'daily' => (int) round($tenureMonths * 30),
+            'weekly' => (int) round($tenureMonths * 4),
+            'quarterly' => (int) round($tenureMonths / 3),
+            default => (int) round($tenureMonths),
+        };
+
+        // Avoid 0 installments (causes DivisionByZeroError in the show view preview)
+        if ($currentValue <= 0) {
+            $currentValue = max(
+                1,
+                (int) ($loan->schedules->count() ?: 0),
+                (int) ($loan->loanProduct?->min_tenure_months ?: 1)
+            );
+
+            if ($frequency === 'daily' && $loan->schedules->count() === 0) {
+                $currentValue = max(1, (int) round(($loan->loanProduct?->min_tenure_months ?: 1) * 30));
+            } elseif ($frequency === 'weekly' && $loan->schedules->count() === 0) {
+                $currentValue = max(1, (int) round(($loan->loanProduct?->min_tenure_months ?: 1) * 4));
+            }
+        }
+
         $scheduleAdjustment = [
             'frequency' => $frequency,
-            'current_value' => match($frequency) {
-                'daily' => round($tenureMonths * 30),
-                'weekly' => round($tenureMonths * 4),
-                'quarterly' => round($tenureMonths / 3),
-                default => $tenureMonths,
-            },
-            'unit_label' => match($frequency) {
+            'current_value' => $currentValue,
+            'unit_label' => match ($frequency) {
                 'daily' => 'Days',
                 'weekly' => 'Weeks',
                 'quarterly' => 'Quarters',
                 default => 'Months',
             },
-            'min_value' => $loan->loanProduct ? match($frequency) {
-                'daily' => round($loan->loanProduct->min_tenure_months * 30),
-                'weekly' => round($loan->loanProduct->min_tenure_months * 4),
-                'quarterly' => round($loan->loanProduct->min_tenure_months / 3),
-                default => $loan->loanProduct->min_tenure_months,
-            } : 1,
-            'max_value' => $loan->loanProduct ? match($frequency) {
-                'daily' => round($loan->loanProduct->max_tenure_months * 30),
-                'weekly' => round($loan->loanProduct->max_tenure_months * 4),
-                'quarterly' => round($loan->loanProduct->max_tenure_months / 3),
-                default => $loan->loanProduct->max_tenure_months,
-            } : 360,
-            'can_adjust' => !in_array($loan->status, ['disbursed', 'active', 'overdue', 'completed', 'written_off', 'cancelled']),
+            'min_value' => max(1, $loan->loanProduct ? match ($frequency) {
+                'daily' => (int) round($loan->loanProduct->min_tenure_months * 30),
+                'weekly' => (int) round($loan->loanProduct->min_tenure_months * 4),
+                'quarterly' => (int) max(1, round($loan->loanProduct->min_tenure_months / 3)),
+                default => (int) $loan->loanProduct->min_tenure_months,
+            } : 1),
+            'max_value' => max(1, $loan->loanProduct ? match ($frequency) {
+                'daily' => (int) round($loan->loanProduct->max_tenure_months * 30),
+                'weekly' => (int) round($loan->loanProduct->max_tenure_months * 4),
+                'quarterly' => (int) max(1, round($loan->loanProduct->max_tenure_months / 3)),
+                default => (int) $loan->loanProduct->max_tenure_months,
+            } : 360),
+            'can_adjust' => ! in_array($loan->status, ['disbursed', 'active', 'overdue', 'completed', 'written_off', 'cancelled'], true),
             'total_installments' => $previewSchedule ? count($previewSchedule) : $loan->schedules->count(),
+            'preview_installment_amount' => $loan->loan_amount > 0 && $currentValue > 0
+                ? round(((float) $loan->loan_amount) / $currentValue, 2)
+                : 0,
         ];
 
         $availableCollaterals = Collateral::query()

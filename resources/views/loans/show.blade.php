@@ -418,9 +418,9 @@
                                             <p class="mt-1">
                                                 This loan uses daily repayments. Adjusting the number of days will recalculate the schedule with 
                                                 <span id="preview_installments" class="font-semibold">{{ $scheduleAdjustment['current_value'] }}</span> daily installments.
-                                                @if($loan->loan_amount > 0)
+                                                @if($loan->loan_amount > 0 && ($scheduleAdjustment['current_value'] ?? 0) > 0)
                                                     Each installment will be approximately 
-                                                    <span id="preview_amount" class="font-semibold">TZS {{ number_format(($loan->loan_amount) / $scheduleAdjustment['current_value'], 2) }}</span>
+                                                    <span id="preview_amount" class="font-semibold">TZS {{ number_format($scheduleAdjustment['preview_installment_amount'] ?? (($loan->loan_amount) / max(1, $scheduleAdjustment['current_value'])), 2) }}</span>
                                                     (principal only).
                                                 @endif
                                             </p>
